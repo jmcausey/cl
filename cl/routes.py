@@ -1,7 +1,9 @@
 from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
+from urllib.parse import urlparse
+from datetime import datetime
 from . import get_db
 from .auth import login_required
-from .categories import CRAIGSLIST_CATEGORY_GROUPS
+from .categories import CRAIGSLIST_CATEGORIES, CRAIGSLIST_CATEGORY_GROUPS
 from .scraper import get_craigslist_listings, store_listing
 
 bp = Blueprint("cl", __name__)
@@ -49,7 +51,11 @@ def jobs():
         if action == "delete":
             db.execute("DELETE FROM craigslist_jobs WHERE id = ?", (request.form["job_id"],))
         else:
-            values = _job_values(request.form)
+            try:
+                values = _job_values(request.form)
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return redirect(url_for("cl.jobs"))
             job_id = request.form.get("job_id")
             if job_id:
                 db.execute(
@@ -83,16 +89,26 @@ def _job_values(form):
     name = form.get("name", "").strip()
     term = form.get("term", "").strip()
     category = form.get("category", "sss").strip()
+    if category not in CRAIGSLIST_CATEGORIES:
+        raise ValueError("Invalid Craigslist category.")
     try:
         radius = int(form.get("radius", "100"))
     except ValueError:
         radius = 100
     radius = max(5, min(radius, 500))
     run_times = form.get("run_times", "06:00").strip()
+    for run_time in run_times.split(","):
+        try:
+            datetime.strptime(run_time.strip(), "%H:%M")
+        except ValueError:
+            raise ValueError("Run times must use HH:MM format.")
     location_name = form.get("location_name", "East Texas").strip()
     location_url = form.get(
         "location_url", "https://easttexas.craigslist.org/search/sss"
     ).strip()
+    parsed = urlparse(location_url)
+    if parsed.scheme != "https" or not parsed.netloc or "craigslist.org" not in parsed.netloc:
+        raise ValueError("Location URL must be an HTTPS Craigslist URL.")
     is_default = 1 if form.get("is_default_location") else 0
     enabled = 1 if form.get("enabled") else 0
     if not name or not term:
