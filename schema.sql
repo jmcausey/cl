@@ -1,0 +1,51 @@
+CREATE TABLE IF NOT EXISTS user (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ username TEXT UNIQUE NOT NULL,
+ password TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_identity (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ user_id INTEGER NOT NULL,
+ provider TEXT NOT NULL,
+ subject TEXT NOT NULL,
+ email TEXT,
+ FOREIGN KEY(user_id) REFERENCES user(id) ON DELETE CASCADE,
+ UNIQUE(provider, subject)
+);
+CREATE TABLE IF NOT EXISTS craigslist_postings (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ craigslist_id TEXT NOT NULL UNIQUE,
+ title TEXT NOT NULL,
+ price_text TEXT,
+ price_amount REAL,
+ location TEXT,
+ latitude REAL,
+ longitude REAL,
+ listing_url TEXT NOT NULL,
+ category TEXT,
+ search_query TEXT,
+ posted_at TEXT,
+ scraped_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ image_url TEXT,
+ description TEXT,
+ status TEXT NOT NULL DEFAULT 'new'
+);
+CREATE INDEX IF NOT EXISTS idx_cl_postings_posted ON craigslist_postings(posted_at DESC);
+CREATE TABLE IF NOT EXISTS craigslist_jobs (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ job_key TEXT NOT NULL UNIQUE,
+ name TEXT NOT NULL,
+ term TEXT NOT NULL,
+ category TEXT NOT NULL,
+ radius INTEGER NOT NULL DEFAULT 100,
+ run_times TEXT NOT NULL DEFAULT '06:00',
+ location_name TEXT NOT NULL DEFAULT 'East Texas',
+ location_url TEXT NOT NULL DEFAULT 'https://easttexas.craigslist.org/search/sss',
+ is_default_location INTEGER NOT NULL DEFAULT 0,
+ enabled INTEGER NOT NULL DEFAULT 1,
+ last_run_at TEXT,
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_cl_jobs_enabled ON craigslist_jobs(enabled);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cl_jobs_default ON craigslist_jobs(is_default_location) WHERE is_default_location = 1;
