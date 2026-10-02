@@ -1,0 +1,2 @@
+CRAIGSLIST_CATEGORY_GROUPS={"Community":(("pet","Pets"),("ccc","Community")),"Services":(("bbb","Services"),("pas","Pet")),"Housing":(("hhh","Housing"),("apa","Apartments / Housing")),"For Sale":(("sss","For Sale"),("zip","Free"),("sga","Sporting Goods")),"Jobs":(("jjj","Jobs"),("sof","Software / QA / DBA")),"Gigs":(("ggg","Gigs"),),"Other":(("eee","Event Calendar"),("rrr","Resumes"))}
+CRAIGSLIST_CATEGORIES={code:label for group in CRAIGSLIST_CATEGORY_GROUPS.values() for code,label in group}
