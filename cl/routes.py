@@ -57,6 +57,8 @@ def jobs():
                 flash(str(exc), "error")
                 return redirect(url_for("cl.jobs"))
             job_id = request.form.get("job_id")
+            if values[-2]:
+                db.execute("UPDATE craigslist_jobs SET is_default_location=0 WHERE id != ?", (job_id or -1,))
             if job_id:
                 db.execute(
                     """UPDATE craigslist_jobs SET name=?, term=?, category=?, radius=?,
