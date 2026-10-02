@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Search Jobs — CL{% endblock %}
+{% block content %}
+<h1>Craigslist Search Jobs</h1>
+<form method="post" class="card">
+<input name="name" placeholder="Job name" required>
+<input name="term" placeholder="Search term" required>
+<select name="category">{% for group,items in category_groups.items() %}<optgroup label="{{ group }}">{% for code,label in items %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</optgroup>{% endfor %}</select>
+<input name="radius" type="number" min="5" max="500" value="100">
+<input name="location_name" placeholder="Location name" value="East Texas">
+<input name="location_url" value="https://easttexas.craigslist.org/search/sss">
+<input name="run_times" value="06:00" placeholder="06:00,18:00">
+<label><input type="checkbox" name="enabled" checked> Enabled</label>
+<label><input type="checkbox" name="is_default_location"> Default location</label>
+<button>Save Job</button>
+</form>
+<table><tr><th>Name</th><th>Search</th><th>Schedule</th><th>Location</th><th>Last run</th><th>Actions</th></tr>
+{% for job in jobs %}<tr>
+<td>{{ job.name }}</td><td>{{ job.term }} / {{ job.category }}</td><td>{{ job.run_times }}</td><td>{{ job.location_name }}</td><td>{{ job.last_run_at or "Never" }}</td>
+<td><form class="inline" method="post" action="{{ url_for('cl.run_job', job_id=job.id) }}"><button>Run</button></form>
+<form class="inline" method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="job_id" value="{{ job.id }}"><button>Delete</button></form></td>
+</tr>{% endfor %}</table>
+{% endblock %}
