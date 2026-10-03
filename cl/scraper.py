@@ -1,7 +1,8 @@
 import html
 import re
+import functools
 from datetime import datetime, timedelta
-from urllib.parse import quote_plus, urldefrag, urljoin, urlparse
+from urllib.parse import quote_plus, urlencode, urldefrag, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -12,39 +13,78 @@ DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-def base_location_search_url(city, state=None, category="sss"):
-    """Build a Craigslist search URL centered on a city or city/state."""
-    if not city or not str(city).strip():
-        raise ValueError("City is required.")
+CRAILSITES_URL = "https://www.craigslist.org/about/sites"
 
-    location = str(city).strip()
-    if state and str(state).strip():
-        location = f"{location}, {str(state).strip()}"
+def _normalize_location(value):
+    return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
-    if not re.fullmatch(r"[^,]+(?:,\\s*[A-Za-z]{2})?", location):
+@functools.lru_cache(maxsize=1)
+def _craigslist_sites():
+    response = requests.get(CRAILSITES_URL, headers=DEFAULT_HEADERS, timeout=15)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, "html.parser")
+    sites = []
+    context = ""
+    for element in soup.find_all(["h2", "h3", "a"]):
+        if element.name in ("h2", "h3"):
+            context = element.get_text(" ", strip=True)
+            continue
+        href = element.get("href")
+        name = element.get_text(" ", strip=True)
+        if not href or not name or "craigslist.org" not in href:
+            continue
+        sites.append({"name": name, "url": href.rstrip("/"), "context": context})
+    return sites
+
+def resolve_craigslist_site(location):
+    """Find a Craigslist site for a supported worldwide location."""
+    if not location or not str(location).strip():
+        raise ValueError("Location is required.")
+    requested = _normalize_location(str(location))
+    try:
+        sites = _craigslist_sites()
+    except requests.RequestException as exc:
+        raise ValueError(f"Could not load Craigslist site directory: {exc}") from exc
+    matches = []
+    for site in sites:
+        name = _normalize_location(site["name"])
+        if requested == name or requested in name or name in requested:
+            matches.append(site)
+    if not matches:
         raise ValueError(
-            "Location must be a city or city/state, such as 'Athens' or 'Athens, TX'."
+            f"No Craigslist site was found for {location!r}. "
+            "Use a location from Craigslist’s worldwide site directory."
         )
+    if len(matches) > 1:
+        exact = [s for s in matches if _normalize_location(s["name"]) == requested]
+        if len(exact) == 1:
+            return exact[0]["url"]
+        raise ValueError(f"Multiple Craigslist sites match {location!r}; use the specific site name.")
+    return matches[0]["url"]
 
+def base_location_search_url(location, category="sss", query=None, radius=None):
+    """Build a search URL for any Craigslist-supported worldwide site."""
+    site_url = resolve_craigslist_site(location)
     category = (category or "sss").strip().strip("/")
     if not re.fullmatch(r"[A-Za-z0-9_-]+", category):
         raise ValueError("Invalid Craigslist category.")
+    params = {}
+    if query:
+        params["query"] = str(query).strip()
+    if radius is not None:
+        try:
+            radius = int(radius)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Radius must be an integer.") from exc
+        if radius < 0:
+            raise ValueError("Radius cannot be negative.")
+        params["search_distance"] = radius
+    query_string = urlencode(params)
+    return f"{site_url}/search/{category}" + (f"?{query_string}" if query_string else "")
 
-    return (
-        f"https://www.craigslist.org/search/{category}"
-        f"?search_location={quote_plus(location)}"
-    )
-
-
-def get_base_location_search_url(location, category="sss"):
-    """Resolve a city or city/state string into a Craigslist search URL."""
-    if not location or not str(location).strip():
-        raise ValueError("Location is required.")
-
-    parts = [part.strip() for part in str(location).split(",", 1)]
-    if len(parts) == 1:
-        return base_location_search_url(parts[0], category=category)
-    return base_location_search_url(parts[0], parts[1], category=category)
+def get_base_location_search_url(location, category="sss", query=None, radius=None):
+    """Backward-compatible alias for base_location_search_url."""
+    return base_location_search_url(location, category=category, query=query, radius=radius)
 
 def _listing_id(row, url):
     value = row.get("data-pid") or row.get("data-id")
