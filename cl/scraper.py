@@ -404,7 +404,7 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
 
 def store_listing(listing, db):
     cursor = db.execute(
-        """INSERT OR IGNORE INTO craigslist_postings
+        """INSERT INTO craigslist_postings
            (craigslist_id,title,price_text,price_amount,location,
             listing_url,category,search_query,posted_at,image_url,description)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
@@ -413,8 +413,13 @@ def store_listing(listing, db):
          listing["listing_url"], listing.get("category"),
          listing.get("search_query"), listing.get("posted_at"), listing.get("image_url"),
          listing.get("description")),
+        ON CONFLICT (craigslist_id) DO NOTHING
     )
-    return cursor.rowcount == 1
+    # SQLite and PostgreSQL both support ON CONFLICT for this unique key.
+    try:
+        return cursor.rowcount == 1
+    except Exception:
+        return False
 
 def run_scraper(query="surfboard", max_results=5, **kwargs):
     from . import create_app, get_db
