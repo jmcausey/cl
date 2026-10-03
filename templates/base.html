@@ -1,23 +1,4 @@
-<!doctype html>
-<title>{% block title %}CL{% endblock %}</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-body{font-family:system-ui,sans-serif;max-width:1100px;margin:0 auto;padding:1rem;background:#f6f6f6;color:#222}
-nav{display:flex;gap:1rem;margin-bottom:1rem} a{color:#0645ad}
-.card{background:white;border:1px solid #ddd;border-radius:8px;padding:1rem;margin:.75rem 0}
-.card img{max-width:100%;height:auto;border-radius:4px}
-.meta{color:#666;font-size:.9rem}.price{font-weight:700}
-form.inline{display:inline}
-table{width:100%;border-collapse:collapse;background:white}td,th{padding:.5rem;border-bottom:1px solid #ddd;text-align:left}
-input,select{padding:.45rem;margin:.15rem}button{padding:.45rem .7rem}
-</style>
-<nav>
-<a href="{{ url_for('cl.index') }}">Craigslist</a>
-<a href="{{ url_for('cl.pets') }}">Pets</a>
-{% if g.user %}<a href="{{ url_for('cl.jobs') }}">Search Jobs</a><a href="{{ url_for('auth.logout') }}">Sign Out</a>
-{% else %}<a href="{{ url_for('auth.login') }}">Sign In with Google</a>{% endif %}
-</nav>
-{% with messages = get_flashed_messages(with_categories=true) %}
-{% for category,message in messages %}<div class="card">{{ message }}</div>{% endfor %}
-{% endwith %}
-{% block content %}{% endblock %}
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{% block title %}CL{% endblock %}</title>
+<style>body{font-family:system-ui,sans-serif;max-width:1100px;margin:auto;padding:1rem;background:#f5f5f5;color:#222}nav{display:flex;gap:1rem;margin-bottom:1.5rem}a{color:#0645ad}.card{background:#fff;border:1px solid #ddd;border-radius:8px;padding:1rem;margin:.75rem 0}.meta{color:#666;font-size:.9rem}.price{font-weight:700}.card img{max-width:100%;height:auto;border-radius:4px}form.inline{display:inline}table{width:100%;border-collapse:collapse;background:#fff}td,th{padding:.6rem;border-bottom:1px solid #ddd;text-align:left}input,select,button{font:inherit;padding:.45rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem}.notice{padding:.75rem;background:#fff;border:1px solid #ddd;border-radius:6px;margin:.5rem 0}</style></head>
+<body><nav><a href="{{ url_for('cl.index') }}">Listings</a><a href="{{ url_for('cl.control') }}">Control Panel</a></nav>
+{% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="notice">{{ message }}</div>{% endfor %}{% endwith %}{% block content %}{% endblock %}</body></html>
