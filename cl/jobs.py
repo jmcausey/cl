@@ -10,6 +10,29 @@ def execute_job(job):
         category=job["category"], radius=job["radius"]
     )
 
+def run_job_by_id(db, job_id):
+    job = db.execute("SELECT * FROM craigslist_jobs WHERE id=?", (job_id,)).fetchone()
+    if job is None:
+        raise ValueError(f"Search job {job_id} was not found.")
+
+    try:
+        inserted = execute_job(dict(job))
+        status = "completed"
+        print(f"Search '{job['name']}' completed: {inserted} new listings.")
+        return inserted
+    except Exception as exc:
+        status = "failed"
+        print(f"Search '{job['name']}' failed: {exc}")
+        raise
+    finally:
+        db.execute(
+            """UPDATE craigslist_jobs
+               SET last_status=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (status, job_id),
+        )
+        db.commit()
+
+
 def run_due_jobs(db, now=None, force=False):
     now = now or datetime.now()
     runs = 0
