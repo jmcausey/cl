@@ -33,6 +33,25 @@ def _craigslist_sites():
     response = requests.get(CRAILSITES_URL, headers=DEFAULT_HEADERS, timeout=15)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
+    rows = soup.select(
+        "li.cl-static-search-result, "
+        "li.cl-search-result, "
+        ".cl-search-result, "
+        ".result-row, "
+        "li[data-pid]"
+    )
+
+    # Craigslist can serve result markup without the legacy result-row classes.
+    if not rows:
+        rows = []
+        seen_nodes = set()
+        for link in soup.select('a[href*="/d/"]'):
+            node = link.find_parent(["li", "article", "div"])
+            if node is not None and id(node) not in seen_nodes:
+                seen_nodes.add(id(node))
+                rows.append(node)
+
+    print(f"Craigslist result rows found: {len(rows)}")
     sites = []
     context = ""
     for element in soup.find_all(["h2", "h3", "a"]):
