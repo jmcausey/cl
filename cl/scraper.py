@@ -6,7 +6,6 @@ from urllib.parse import quote_plus, urlencode, urldefrag, urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
-BASE_URL = "https://easttexas.craigslist.org/search/sss"
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -35,31 +34,83 @@ def _craigslist_sites():
         sites.append({"name": name, "url": href.rstrip("/"), "context": context})
     return sites
 
+def _location_aliases(location):
+    """Return useful search forms for city/state input."""
+    raw = str(location).strip()
+    normalized = _normalize_location(raw)
+    forms = {normalized}
+    # "Dallas, TX" should match Craigslist's "Dallas / Fort Worth" region.
+    parts = [p for p in re.split(r"[,]+", raw) if p.strip()]
+    if parts:
+        forms.add(_normalize_location(parts[0]))
+    state = ""
+    if len(parts) > 1:
+        state = _normalize_location(parts[-1])
+        forms.add(f"{forms.copy().pop()} {state}" if state else normalized)
+    return {x for x in forms if x}
+
+
 def resolve_craigslist_site(location):
-    """Find a Craigslist site for a supported worldwide location."""
+    """Find the Craigslist regional site for a city or city/state."""
     if not location or not str(location).strip():
         raise ValueError("Location is required.")
-    requested = _normalize_location(str(location))
+
+    requested_forms = _location_aliases(location)
+
     try:
         sites = _craigslist_sites()
     except requests.RequestException as exc:
         raise ValueError(f"Could not load Craigslist site directory: {exc}") from exc
-    matches = []
+
+    # First prefer an exact match. Then allow a city name to occur inside a
+    # regional Craigslist name, e.g. Dallas -> Dallas / Fort Worth.
+    exact = []
+    partial = []
     for site in sites:
         name = _normalize_location(site["name"])
-        if requested == name or requested in name or name in requested:
-            matches.append(site)
+        if name in requested_forms or requested_forms.intersection({name}):
+            exact.append(site)
+        elif any(form and (form in name or name in form) for form in requested_forms):
+            partial.append(site)
+
+    matches = exact or partial
+
+    # Craigslist uses regional names. These aliases make common city/state
+    # input resolve naturally without requiring users to know the region name.
+    aliases = {
+        "dallas": ("dallas fort worth", "dallas"),
+        "fort worth": ("dallas fort worth",),
+        "san francisco": ("san francisco bay area",),
+        "new york": ("new york city",),
+        "washington dc": ("washington",),
+        "washington d c": ("washington",),
+        "miami": ("miami dade",),
+        "orlando": ("orlando",),
+    }
+    requested = next(iter(requested_forms), "")
+    for alias in aliases.get(requested, ()):
+        for site in sites:
+            if _normalize_location(site["name"]) == alias:
+                return site["url"]
+
     if not matches:
         raise ValueError(
             f"No Craigslist site was found for {location!r}. "
-            "Use a location from Craigslist’s worldwide site directory."
+            "Enter a Craigslist city or regional site name, such as "
+            "'Dallas, TX' or 'Dallas / Fort Worth'."
         )
-    if len(matches) > 1:
-        exact = [s for s in matches if _normalize_location(s["name"]) == requested]
-        if len(exact) == 1:
-            return exact[0]["url"]
-        raise ValueError(f"Multiple Craigslist sites match {location!r}; use the specific site name.")
-    return matches[0]["url"]
+
+    # If several regional names contain the city, don't silently choose.
+    unique = {site["url"]: site for site in matches}
+    if len(unique) > 1:
+        exact_names = { _normalize_location(site["name"]) for site in matches }
+        if len(exact_names) == 1:
+            return next(iter(unique.values()))["url"]
+        raise ValueError(
+            f"Multiple Craigslist sites match {location!r}. "
+            "Use the regional Craigslist name shown in the site directory."
+        )
+    return next(iter(unique.values()))["url"]
 
 def base_location_search_url(location, category="sss", query=None, radius=None):
     """Build a search URL for any Craigslist-supported worldwide site."""
@@ -122,7 +173,7 @@ def _description(value):
 
 def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=None,
                             search_url=None, category=None,
-                            area_label="100 miles of Athens, TX", radius=100):
+                            area_label=None, radius=100):
     if search_url:
         target_url, _ = urldefrag(search_url)
     else:
