@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Control Panel — CL{% endblock %}{% block content %}
+<h1>Craigslist Search Control Panel</h1>
+<form method="post" class="card"><div class="grid">
+<label>Name<br><input name="name" required placeholder="Used boats"></label>
+<label>Location<br><input name="location" required placeholder="Austin, TX or Paris"></label>
+<label>Search term<br><input name="term" required placeholder="boat"></label>
+<label>Category<br><input name="category" value="sss" required></label>
+<label>Radius (miles)<br><input name="radius" type="number" min="0" max="500" value="0"></label>
+<label>Run times<br><input name="run_times" value="06:00" placeholder="06:00,18:00"></label>
+</div><p><label><input type="checkbox" name="enabled" checked> Enabled</label></p><button>Save Search</button></form>
+<h2>Configured Searches</h2>
+<table><tr><th>Name</th><th>Location</th><th>Search</th><th>Schedule</th><th>Status</th><th>Actions</th></tr>
+{% for job in jobs %}<tr><td>{{ job.name }}</td><td>{{ job.location }}</td><td>{{ job.term }} / {{ job.category }}</td><td>{{ job.run_times or "Manual only" }}</td><td>{{ job.last_status or "Never run" }}{% if job.last_run_at %}<br><small>{{ job.last_run_at }}</small>{% endif %}</td><td>
+<form class="inline" method="post"><input type="hidden" name="action" value="run"><input type="hidden" name="job_id" value="{{ job.id }}"><button>Run Now</button></form>
+<form class="inline" method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="job_id" value="{{ job.id }}"><button>Delete</button></form>
+</td></tr>{% else %}<tr><td colspan="6">No searches configured.</td></tr>{% endfor %}</table>{% endblock %}
