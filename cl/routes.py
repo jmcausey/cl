@@ -17,7 +17,7 @@ def get_current_user():
     user_id = session.get("user_id")
     if not user_id:
         return None
-    row = get_db().execute("SELECT * FROM users WHERE id = %s", (user_id,)).fetchone()
+    row = get_db().execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
     return dict(row) if row else None
 
 
@@ -49,12 +49,12 @@ def control():
     if request.method == "POST":
         action = request.form.get("action")
         if action == "delete":
-            db.execute("DELETE FROM craigslist_jobs WHERE id=%s", (request.form["job_id"],))
+            db.execute("DELETE FROM craigslist_jobs WHERE id=?", (request.form["job_id"],))
             db.commit()
             flash("Search removed.", "success")
             return redirect(url_for("cl.control"))
         if action == "run":
-            job = db.execute("SELECT * FROM craigslist_jobs WHERE id=%s", (request.form["job_id"],)).fetchone()
+            job = db.execute("SELECT * FROM craigslist_jobs WHERE id=?", (request.form["job_id"],)).fetchone()
             if job is None:
                 flash("Search not found.", "error")
             else:
@@ -65,7 +65,7 @@ def control():
                            SET last_run_at=CURRENT_TIMESTAMP,
                                last_status='completed',
                                updated_at=CURRENT_TIMESTAMP
-                           WHERE id=%s""",
+                           WHERE id=?""",
                         (job["id"],),
                     )
                     db.commit()
@@ -76,7 +76,7 @@ def control():
                            SET last_run_at=CURRENT_TIMESTAMP,
                                last_status='failed',
                                updated_at=CURRENT_TIMESTAMP
-                           WHERE id=%s""",
+                           WHERE id=?""",
                         (job["id"],),
                     )
                     db.commit()
@@ -98,8 +98,8 @@ def control():
             job_id = request.form.get("job_id")
             if job_id:
                 db.execute(
-                    """UPDATE craigslist_jobs SET name=%s, location=%s, term=%s, category=%s,
-                       radius=%s, run_times=%s, enabled=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s""",
+                    """UPDATE craigslist_jobs SET name=?, location=?, term=?, category=?,
+                       radius=?, run_times=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                     (name, location, term, category, radius, run_times, enabled, job_id),
                 )
             else:
@@ -107,7 +107,7 @@ def control():
                 db.execute(
                     """INSERT INTO craigslist_jobs
                        (job_key,name,location,term,category,radius,run_times,enabled)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s)""",
+                       VALUES (?,?,?,?,?,?,?,?)""",
                     (job_key, name, location, term, category, radius, run_times, enabled),
                 )
             db.commit()
@@ -121,7 +121,7 @@ def control():
 @bp.route("/listing/<int:listing_id>/hide", methods=("POST",))
 def hide_listing(listing_id):
     db = get_db()
-    db.execute("UPDATE craigslist_postings SET status='hidden' WHERE id=%s", (listing_id,))
+    db.execute("UPDATE craigslist_postings SET status='hidden' WHERE id=?", (listing_id,))
     db.commit()
     return redirect(url_for("cl.index"))
 
@@ -143,7 +143,7 @@ def craigslist_listing_status(listing_id):
 
     db = get_db()
     cursor = db.execute(
-        "UPDATE craigslist_postings SET status = %s WHERE id = %s AND status != 'hidden'",
+        "UPDATE craigslist_postings SET status = ? WHERE id = ? AND status != 'hidden'",
         (status, listing_id),
     )
     db.commit()
@@ -192,7 +192,7 @@ def google_callback():
     db.execute(
         """
         INSERT INTO users (google_sub, email, name, picture, updated_at)
-        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(google_sub) DO UPDATE SET
             email=EXCLUDED.email,
             name=EXCLUDED.name,
@@ -201,7 +201,7 @@ def google_callback():
         """,
         (google_sub, email, name, picture),
     )
-    user = db.execute("SELECT * FROM users WHERE google_sub = %s", (google_sub,)).fetchone()
+    user = db.execute("SELECT * FROM users WHERE google_sub = ?", (google_sub,)).fetchone()
     db.commit()
     session["user_id"] = user["id"]
     session["user_name"] = name
@@ -282,17 +282,17 @@ def blog_admin():
     params = []
     clauses = []
     if status_filter != "all":
-        clauses.append("bp.status = %s")
+        clauses.append("bp.status = ?")
         params.append(status_filter)
     elif pending_only:
-        clauses.append("bp.status = %s")
+        clauses.append("bp.status = ?")
         params.append("pending")
     if search_term:
-        clauses.append("(LOWER(bp.title) LIKE %s OR LOWER(bp.body) LIKE %s)")
+        clauses.append("(LOWER(bp.title) LIKE ? OR LOWER(bp.body) LIKE ?)")
         like_term = f"%{search_term.lower()}%"
         params.extend([like_term, like_term])
     if my_posts_only:
-        clauses.append("bp.user_id = %s")
+        clauses.append("bp.user_id = ?")
         params.append(current_user["id"])
     if clauses:
         query += " WHERE " + " AND ".join(clauses)
@@ -349,7 +349,7 @@ def blog_new():
             return render_template("blog_new.html", current_user=current_user, is_admin=is_admin)
 
         get_db().execute(
-            "INSERT INTO blog_posts (user_id, title, body, status) VALUES (%s, %s, %s, %s)",
+            "INSERT INTO blog_posts (user_id, title, body, status) VALUES (?, ?, ?, ?)",
             (current_user["id"], title, body, status),
         )
         get_db().commit()
@@ -369,7 +369,7 @@ def blog_status(post_id):
 
     db = get_db()
     post = db.execute(
-        "SELECT * FROM blog_posts WHERE id = %s",
+        "SELECT * FROM blog_posts WHERE id = ?",
         (post_id,),
     ).fetchone()
 
@@ -384,14 +384,14 @@ def blog_status(post_id):
 
     action = request.form.get("action", "pending")
     if action == "delete":
-        db.execute("DELETE FROM blog_posts WHERE id = %s", (post_id,))
+        db.execute("DELETE FROM blog_posts WHERE id = ?", (post_id,))
         db.commit()
         flash("Blog post deleted.", "success")
         return redirect(url_for("cl.blog"))
 
     status = normalize_blog_status(action)
     db.execute(
-        "UPDATE blog_posts SET status = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+        "UPDATE blog_posts SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
         (status, post_id),
     )
     db.commit()
