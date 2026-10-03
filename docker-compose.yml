@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cl}
+      POSTGRES_USER: ${POSTGRES_USER:-cl}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - cl_postgres_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cl} -d ${POSTGRES_DB:-cl}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - cl_shared_data
+
+  web:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cl}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-cl}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-change-this-secret}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      BLOG_ALLOWED_EMAILS: ${BLOG_ALLOWED_EMAILS:-}
+    command: >
+      sh -c "flask --app app init-db &&
+             gunicorn --bind 0.0.0.0:5001 --workers 2 app:app"
+    ports:
+      - "${APP_PORT:-5001}:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cl_shared_data
+
+  scheduler:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cl}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-cl}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-change-this-secret}
+    command: >
+      sh -c "flask --app app init-db &&
+             python scheduler.py"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - cl_shared_data
+
+volumes:
+  cl_postgres_data:
+
+# This is a real Docker network name, not Compose-project scoped.
+# Other Compose projects can join it with:
+# networks:
+#   cl_shared_data:
+#     external: true
+#     name: cl_shared_data
+networks:
+  cl_shared_data:
+    name: cl_shared_data
