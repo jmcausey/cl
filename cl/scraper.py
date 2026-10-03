@@ -309,13 +309,40 @@ def _image_url(element, base_url):
 
 
 def _listing_image(row, base_url):
-    """Find the listing thumbnail exposed on the search result page."""
+    """Find an image from the result markup or Craigslist image metadata."""
     image = row.select_one(
-        "img[data-src], img[data-original], img[src], "
+        "img[data-src], img[data-original], img[data-img-src], img[src], "
         ".thumb img, .cl-thumb img, a.result-image img"
     )
-    return _image_url(image, base_url)
 
+    image_url = _image_url(image, base_url)
+    if image_url and "images.craigslist.org" in image_url:
+        return image_url
+
+    # Craigslist may put the image identifier on the result link instead
+    # of rendering an img tag in the raw HTML.
+    for element in row.select("[data-ids], [data-id]"):
+        raw = element.get("data-ids") or element.get("data-id")
+        if not raw:
+            continue
+
+        candidate = re.split(r"[,\s]+", raw.strip())[0]
+
+        if ":" in candidate:
+            candidate = candidate.rsplit(":", 1)[-1]
+
+        candidate = candidate.split("/")[-1]
+        candidate = re.sub(
+            r"\.(?:jpg|jpeg|png|webp)$",
+            "",
+            candidate,
+            flags=re.I,
+        )
+
+        if re.fullmatch(r"[A-Za-z0-9_-]+", candidate):
+            return f"https://images.craigslist.org/{candidate}_300x300.jpg"
+
+    return None
 
 def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=None,
                             search_url=None, category=None,
