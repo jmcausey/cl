@@ -1,4 +1,3 @@
-import html
 import re
 import functools
 from datetime import datetime, timedelta
@@ -222,7 +221,3 @@ def run_scraper(query="surfboard", max_results=5, **kwargs):
         db.commit()
         return inserted
 
-def run_pet_scraper():
-    return run_scraper(query="pets", max_results=None,
-                       search_url="https://www.craigslist.org/search/area/easttexas?cat=pet#search=2~list~0",
-                       category="pet", area_label="East Texas")
