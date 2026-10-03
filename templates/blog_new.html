@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Create Blog Post{% endblock %}{% block content %}
+<h1>Create a Blog Post</h1>
+<form method="post" class="card">
+  <div class="grid">
+    <label>Title<br><input type="text" name="title" required></label>
+    <label>Status<br>
+      <select name="status">
+        <option value="pending">Pending</option>
+        <option value="completed">Completed</option>
+      </select>
+    </label>
+  </div>
+  <p><label>Body<br><textarea name="body" rows="10" required></textarea></label></p>
+  <button type="submit">Save Post</button>
+  <a href="{{ url_for('cl.blog') }}">Cancel</a>
+</form>
+{% endblock %}

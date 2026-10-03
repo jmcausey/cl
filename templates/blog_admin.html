@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% block title %}Blog Admin Dashboard{% endblock %}{% block content %}
+<h1>Blog Admin Dashboard</h1>
+<p>Signed in as {{ current_user.name or current_user.email }}.</p>
+<p><a href="{{ url_for('cl.blog') }}">Back to blog</a> | <a href="{{ url_for('cl.blog_new') }}">Create New Post</a> | <a href="{{ url_for('cl.google_logout') }}">Log out</a></p>
+
+<div class="grid">
+  <div class="card"><strong>Total</strong><br>{{ counts.total }}</div>
+  <div class="card"><strong>Pending</strong><br>{{ counts.pending }}</div>
+  <div class="card"><strong>Completed</strong><br>{{ counts.completed }}</div>
+</div>
+
+<div class="card">
+  <p>
+    <a href="{{ url_for('cl.blog_admin', status='all', sort=sort_order) }}">All</a> |
+    <a href="{{ url_for('cl.blog_admin', status='pending', sort=sort_order) }}">Pending</a> |
+    <a href="{{ url_for('cl.blog_admin', status='completed', sort=sort_order) }}">Completed</a>
+  </p>
+  <form method="get" action="{{ url_for('cl.blog_admin') }}" style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin:1rem 0;">
+    <input type="hidden" name="status" value="{{ status_filter }}">
+    <input type="hidden" name="sort" value="{{ sort_order }}">
+    <label>Search <input type="text" name="search" value="{{ search_term }}" placeholder="title or body"></label>
+    <label><input type="checkbox" name="mine" value="1" {% if mine %}checked{% endif %}> My posts only</label>
+    <label><input type="checkbox" name="pending" value="1" {% if pending_only %}checked{% endif %}> Pending only</label>
+    <button type="submit">Filter</button>
+    {% if search_term or mine or pending_only %}
+      <a href="{{ url_for('cl.blog_admin', status=status_filter, sort=sort_order) }}">Clear</a>
+    {% endif %}
+  </form>
+  <p>
+    Sort:
+    <a href="{{ url_for('cl.blog_admin', status=status_filter, sort='updated_desc', search=search_term, mine='1' if mine else '0', pending='1' if pending_only else '0') }}">Newest updated</a> |
+    <a href="{{ url_for('cl.blog_admin', status=status_filter, sort='updated_asc', search=search_term, mine='1' if mine else '0', pending='1' if pending_only else '0') }}">Oldest updated</a> |
+    <a href="{{ url_for('cl.blog_admin', status=status_filter, sort='created_desc', search=search_term, mine='1' if mine else '0', pending='1' if pending_only else '0') }}">Newest created</a> |
+    <a href="{{ url_for('cl.blog_admin', status=status_filter, sort='created_asc', search=search_term, mine='1' if mine else '0', pending='1' if pending_only else '0') }}">Oldest created</a>
+  </p>
+
+  {% for post in posts %}
+    <div style="border:1px solid #ddd; border-radius:6px; padding:1rem; margin:1rem 0;">
+      <div class="meta">Created {{ post.created_at }} · {{ post.author_name or post.author_email or 'Unknown author' }}</div>
+      <div class="meta">Last updated {{ post.updated_at }}</div>
+      <h3>{{ post.title }}</h3>
+      <p><strong>Status:</strong> <span class="status-badge status-{{ post.status }}">{{ post.status | title }}</span></p>
+      <div>{{ post.body }}</div>
+      <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+        <form method="post" action="{{ url_for('cl.blog_status', post_id=post.id) }}" class="inline">
+          <input type="hidden" name="action" value="pending">
+          <button type="submit">Pending</button>
+        </form>
+        <form method="post" action="{{ url_for('cl.blog_status', post_id=post.id) }}" class="inline">
+          <input type="hidden" name="action" value="completed">
+          <button type="submit">Completed</button>
+        </form>
+        <form method="post" action="{{ url_for('cl.blog_status', post_id=post.id) }}" class="inline">
+          <input type="hidden" name="action" value="delete">
+          <button type="submit">Delete</button>
+        </form>
+      </div>
+    </div>
+  {% else %}
+    <p>No posts match this filter.</p>
+  {% endfor %}
+</div>
+{% endblock %}

@@ -57,6 +57,30 @@ CATEGORY_LABELS = {
     "community": "Community",
 }
 
+
+def normalize_category(category):
+    """Map human-friendly category labels to the canonical Craigslist code."""
+    if category is None:
+        return "sss"
+
+    value = str(category).strip().strip("/")
+    if not value:
+        return "sss"
+
+    lowered = value.lower()
+    if lowered in CATEGORY_LABELS:
+        return lowered
+
+    label_map = {label.lower(): code for code, label in CATEGORY_LABELS.items()}
+    if lowered in label_map:
+        return label_map[lowered]
+
+    if re.fullmatch(r"[A-Za-z0-9_-]+", value):
+        return value
+
+    raise ValueError(f"Invalid Craigslist category: {category!r}.")
+
+
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -197,9 +221,7 @@ def resolve_craigslist_site(location):
 def base_location_search_url(location, category="sss", query=None, radius=None):
     """Build a search URL for any Craigslist-supported worldwide site."""
     site_url = resolve_craigslist_site(location)
-    category = (category or "sss").strip().strip("/")
-    if not re.fullmatch(r"[A-Za-z0-9_-]+", category):
-        raise ValueError("Invalid Craigslist category.")
+    category = normalize_category(category)
     params = {}
     if query:
         params["query"] = str(query).strip()
@@ -222,8 +244,21 @@ def _listing_id(row, url):
     value = row.get("data-pid") or row.get("data-id")
     if value:
         return str(value)
-    match = re.search(r"(\d{8,})(?:\.html)?$", urlparse(url).path)
-    return match.group(1) if match else None
+    if not url:
+        return None
+
+    path = urlparse(url).path.rstrip("/")
+    if not path:
+        return None
+
+    match = re.search(r"(\d{8,})(?:\.html)?$", path)
+    if match:
+        return match.group(1)
+
+    last_segment = path.rsplit("/", 1)[-1]
+    if last_segment and last_segment not in {"view", "d"}:
+        return last_segment
+    return None
 
 def _posted_at(value):
     if not value:
@@ -344,6 +379,9 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
             except requests.RequestException:
                 pass
 
+        category_key = normalize_category(
+            category or urlparse(target_url).path.rstrip("/").split("/")[-1]
+        )
         listings.append({
             "craigslist_id": cid,
             "title": title,
@@ -351,7 +389,7 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
             "price_amount": _price(price_text),
             "location": location,
             "listing_url": post_url,
-            "category": CATEGORY_LABELS.get(category or urlparse(target_url).path.rstrip("/").split("/")[-1], category or urlparse(target_url).path.rstrip("/").split("/")[-1]),
+            "category": CATEGORY_LABELS.get(category_key, category_key),
             "search_query": query,
             "posted_at": posted.isoformat(sep=" ") if posted else None,
             "image_url": image_url,

@@ -1,0 +1,121 @@
+{% extends "base.html" %}{% block title %}Listings{% endblock %}{% block content %}
+<style>
+body {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+#feed-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 .25rem 12px 0;
+  scroll-behavior: smooth;
+}
+</style>
+<h1>Listings</h1>
+{% if current_user %}
+<p>Signed in as {{ current_user.name or current_user.email }}.
+  {% if is_admin %}<a href="{{ url_for('cl.blog_admin') }}">Admin Dashboard</a> | <a href="{{ url_for('cl.blog_new') }}">Create New Post</a> |{% endif %}
+  <a href="{{ url_for('cl.google_logout') }}">Log Out</a>
+</p>
+{% else %}
+<p><a href="{{ url_for('cl.google_login') }}">Sign in with Google</a> to create and manage blog posts.</p>
+{% endif %}
+
+<div id="feed-container" tabindex="0" aria-label="Scrolling listings feed">
+<section>
+  <h2>Craigslist Listings</h2>
+  {% for listing in listings %}
+    <article class="card">
+      <h3>{{ listing.title }}</h3>
+      <div class="meta">{{ listing.location or "Location not listed" }} · {{ listing.posted_at or listing.scraped_at }}{% if listing.search_query %} · {{ listing.search_query }}{% endif %}</div>
+      <p><strong>Status:</strong> <span class="status-badge status-{{ listing.status }}">{{ listing.status | title }}</span></p>
+      {% if listing.price_text %}<p class="price">{{ listing.price_text }}</p>{% endif %}
+      {% if listing.image_url %}<p><img src="{{ listing.image_url }}" alt="{{ listing.title }}"></p>{% endif %}
+      {% if listing.description %}<p>{{ listing.description }}</p>{% endif %}
+      <p><a href="{{ listing.listing_url }}" target="_blank" rel="noopener">View on Craigslist</a></p>
+      {% if is_admin %}
+        <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+          <form method="post" action="{{ url_for('cl.craigslist_listing_status', listing_id=listing.id) }}" class="inline">
+            <input type="hidden" name="action" value="pending">
+            <button type="submit">Pending</button>
+          </form>
+          <form method="post" action="{{ url_for('cl.craigslist_listing_status', listing_id=listing.id) }}" class="inline">
+            <input type="hidden" name="action" value="completed">
+            <button type="submit">Completed</button>
+          </form>
+        </div>
+      {% endif %}
+    </article>
+  {% else %}
+    <p>No listings have been published yet.</p>
+  {% endfor %}
+</section>
+
+<section>
+<h2>Blog Posts</h2>
+{% for post in posts %}
+  <div class="card">
+    <div class="meta">{{ post.author_name or post.author_email or "Unknown author" }} · {{ post.created_at }}</div>
+    <h2>{{ post.title }}</h2>
+    <p><strong>Status:</strong> <span class="status-badge status-{{ post.status }}">{{ post.status | title }}</span></p>
+    <div>{{ post.body }}</div>
+    {% if current_user and (is_admin or current_user.id == post.user_id) %}
+      <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+        <form method="post" action="{{ url_for('cl.blog_status', post_id=post.id) }}" class="inline">
+          <input type="hidden" name="action" value="pending">
+          <button type="submit">Pending</button>
+        </form>
+        <form method="post" action="{{ url_for('cl.blog_status', post_id=post.id) }}" class="inline">
+          <input type="hidden" name="action" value="completed">
+          <button type="submit">Completed</button>
+        </form>
+        <form method="post" action="{{ url_for('cl.blog_status', post_id=post.id) }}" class="inline">
+          <input type="hidden" name="action" value="delete">
+          <button type="submit">Delete</button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="card"><p>No blog posts yet.</p></div>
+{% endfor %}
+</section>
+</div>
+<script>const latestListingId={{ latest_listing_id }};setInterval(async()=>{try{const r=await fetch("{{ url_for('cl.latest_id') }}");const j=await r.json();if(j.latest_id>latestListingId)location.reload()}catch(e){}},30000);</script>
+<script>
+(function initAutoScroll() {
+  const container = document.getElementById("feed-container");
+  if (!container || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  let isPaused = false;
+  container.addEventListener("mouseenter", () => { isPaused = true; });
+  container.addEventListener("mouseleave", () => { isPaused = false; });
+  container.addEventListener("focusin", () => { isPaused = true; });
+  container.addEventListener("focusout", (event) => {
+    if (!container.contains(event.relatedTarget)) isPaused = false;
+  });
+
+  function step() {
+    if (!isPaused && container.scrollHeight > container.clientHeight + 2) {
+      container.scrollTop += 0.5;
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 2) {
+        isPaused = true;
+        setTimeout(() => {
+          container.scrollTo({ top: 0, behavior: "smooth" });
+          setTimeout(() => {
+            isPaused = container.matches(":hover") || container.contains(document.activeElement);
+          }, 2000);
+        }, 4000);
+      }
+    }
+    requestAnimationFrame(step);
+  }
+
+  setTimeout(() => requestAnimationFrame(step), 2000);
+})();
+</script>
+{% endblock %}
