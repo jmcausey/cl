@@ -1,4 +1,7 @@
 Flask
+Authlib
 requests
 beautifulsoup4
 schedule
+psycopg[binary]
+gunicorn
