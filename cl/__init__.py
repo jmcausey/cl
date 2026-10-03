@@ -18,6 +18,20 @@ def close_db(exception=None):
 def init_db():
     db = get_db()
     db.executescript((Path(current_app.root_path).parent / "schema.sql").read_text())
+
+    # Migrate existing CL databases without deleting searches or listings.
+    columns = {
+        row["name"]
+        for row in db.execute("PRAGMA table_info(craigslist_jobs)").fetchall()
+    }
+    if "location" not in columns:
+        db.execute(
+            "ALTER TABLE craigslist_jobs ADD COLUMN location TEXT NOT NULL DEFAULT ''"
+        )
+
+    if "last_status" not in columns:
+        db.execute("ALTER TABLE craigslist_jobs ADD COLUMN last_status TEXT")
+
     db.commit()
 
 def create_app(test_config=None):
