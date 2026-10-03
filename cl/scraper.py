@@ -344,16 +344,18 @@ def _listing_image(row, base_url):
 
     return None
 
-def enrich_missing_images(db, limit=25):
+def enrich_missing_images(db, limit=None):
     """Backfill images for stored listings without making a large scrape request."""
-    rows = db.execute(
-        """SELECT id, craigslist_id, listing_url
-           FROM craigslist_postings
-           WHERE image_url IS NULL OR image_url = ''
-           ORDER BY id DESC
-           LIMIT ?""",
-        (limit,),
-    ).fetchall()
+    sql = """SELECT id, craigslist_id, listing_url
+             FROM craigslist_postings
+             WHERE image_url IS NULL OR image_url = ''
+             ORDER BY id DESC"""
+    params = ()
+    if limit is not None:
+        sql += " LIMIT ?"
+        params = (limit,)
+
+    rows = db.execute(sql, params).fetchall()
 
     enriched = 0
     for row in rows:
@@ -556,7 +558,7 @@ def run_scraper(query="surfboard", max_results=5, **kwargs):
         inserted = sum(store_listing(item, db) for item in listings)
         db.commit()
 
-        enriched = enrich_missing_images(db, limit=25)
+        enriched = enrich_missing_images(db)
         if enriched:
             print(f"Image enrichment: {enriched} stored listings updated.")
 
