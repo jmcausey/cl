@@ -210,6 +210,7 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
 
     target_url, _ = urldefrag(search_url)
     known = {str(x) for x in (known_listing_ids or ())}
+
     try:
         print(f"Craigslist search: {target_url}")
         response = requests.get(target_url, headers=DEFAULT_HEADERS, timeout=20)
@@ -219,16 +220,36 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
         raise RuntimeError(f"Craigslist request failed: {exc}") from exc
 
     soup = BeautifulSoup(response.text, "html.parser")
+    rows = soup.select(
+        "li.cl-static-search-result, li.cl-search-result, "
+        ".cl-search-result, .result-row, li[data-pid]"
+    )
+
+    if not rows:
+        rows = []
+        seen_nodes = set()
+        for link in soup.select('a[href*="/d/"]'):
+            node = link.find_parent(["li", "article", "div"])
+            if node is not None and id(node) not in seen_nodes:
+                seen_nodes.add(id(node))
+                rows.append(node)
+
+    print(f"Craigslist result rows found: {len(rows)}")
+
     listings, seen = [], set()
     now = datetime.now()
 
     for row in rows:
-        title_el = row.select_one(".result-title, .titlestring, .title, a.posting-title, a")
+        title_el = row.select_one(
+            ".result-title, .titlestring, .title, a.posting-title, a"
+        )
         if not title_el:
             continue
-        title = title_el.get_text(strip=True)
+
+        title = title_el.get_text(" ", strip=True)
         if "modem" in title.lower():
             continue
+
         link = row.select_one("a.posting-title, a.result-title, a[href]")
         post_url = urljoin(target_url, link.get("href", "")) if link else ""
         cid = _listing_id(row, post_url)
@@ -244,10 +265,13 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
         price_el = row.select_one(".result-price, .price, .priceinfo")
         location_el = row.select_one(".result-hood, .nearby, .location")
         price_text = price_el.get_text(strip=True) if price_el else None
-        location = location_el.get_text(" ", strip=True).strip(" ()") if location_el else None
+        location = (
+            location_el.get_text(" ", strip=True).strip(" ()")
+            if location_el else None
+        )
+
         image_url = None
         description = None
-
         if post_url:
             try:
                 detail = requests.get(post_url, headers=DEFAULT_HEADERS, timeout=15)
@@ -256,8 +280,13 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
                     img = ds.select_one('meta[property="og:image"]')
                     image_url = img.get("content") if img else None
                     body = ds.select_one("#postingbody, .postingbody")
-                    desc = ds.select_one('meta[property="og:description"], meta[name="description"]')
-                    description = _description(body.get_text(" ", strip=True) if body else (desc.get("content") if desc else None))
+                    desc = ds.select_one(
+                        'meta[property="og:description"], meta[name="description"]'
+                    )
+                    description = _description(
+                        body.get_text(" ", strip=True)
+                        if body else (desc.get("content") if desc else None)
+                    )
                     address = ds.select_one(".mapaddress")
                     if address:
                         location = location or address.get_text(" ", strip=True)
@@ -265,17 +294,24 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
                 pass
 
         listings.append({
-            "craigslist_id": cid, "title": title,
-            "price_text": price_text, "price_amount": _price(price_text),
-            "location": location, "listing_url": post_url,
+            "craigslist_id": cid,
+            "title": title,
+            "price_text": price_text,
+            "price_amount": _price(price_text),
+            "location": location,
+            "listing_url": post_url,
             "category": category or urlparse(target_url).path.rstrip("/").split("/")[-1],
             "search_query": query,
             "posted_at": posted.isoformat(sep=" ") if posted else None,
-            "image_url": image_url, "description": description,
+            "image_url": image_url,
+            "description": description,
         })
+
         if max_results is not None and len(listings) >= max_results:
             break
+
     return listings
+
 
 def store_listing(listing, db):
     cursor = db.execute(
