@@ -344,6 +344,65 @@ def _listing_image(row, base_url):
 
     return None
 
+def enrich_missing_images(db, limit=25):
+    """Backfill images for stored listings without making a large scrape request."""
+    rows = db.execute(
+        """SELECT id, craigslist_id, listing_url
+           FROM craigslist_postings
+           WHERE image_url IS NULL OR image_url = ''
+           ORDER BY id DESC
+           LIMIT ?""",
+        (limit,),
+    ).fetchall()
+
+    enriched = 0
+    for row in rows:
+        post_url = row["listing_url"]
+        if not post_url:
+            continue
+
+        try:
+            detail = requests.get(
+                post_url,
+                headers=DEFAULT_HEADERS,
+                timeout=15,
+            )
+            if not detail.ok:
+                continue
+
+            ds = BeautifulSoup(detail.text, "html.parser")
+            image_url = (
+                _image_url(
+                    ds.select_one('meta[property="og:image"]'),
+                    post_url,
+                )
+                or _image_url(
+                    ds.select_one(
+                        ".gallery img, .swipe-wrap img, #thumbs img, "
+                        "img[data-img-src], img[data-src]"
+                    ),
+                    post_url,
+                )
+            )
+            if not image_url:
+                continue
+
+            cursor = db.execute(
+                """UPDATE craigslist_postings
+                   SET image_url=?
+                   WHERE id=?
+                     AND (image_url IS NULL OR image_url='')""",
+                (image_url, row["id"]),
+            )
+            if cursor.rowcount == 1:
+                enriched += 1
+        except requests.RequestException:
+            continue
+
+    db.commit()
+    return enriched
+
+
 def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=None,
                             search_url=None, category=None,
                             area_label=None, radius=100):
@@ -496,5 +555,10 @@ def run_scraper(query="surfboard", max_results=5, **kwargs):
         listings = get_craigslist_listings(query=query, max_results=max_results, known_listing_ids=known, **kwargs)
         inserted = sum(store_listing(item, db) for item in listings)
         db.commit()
+
+        enriched = enrich_missing_images(db, limit=25)
+        if enriched:
+            print(f"Image enrichment: {enriched} stored listings updated.")
+
         return inserted
 
