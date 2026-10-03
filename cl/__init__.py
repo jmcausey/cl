@@ -5,6 +5,24 @@ from pathlib import Path
 import psycopg
 from psycopg.rows import dict_row
 from flask import Flask, g, current_app
+
+
+class DatabaseConnection:
+    """Small adapter that keeps the app's SQLite-style ? placeholders portable."""
+
+    def __init__(self, connection, postgres=False):
+        self.connection = connection
+        self.postgres = postgres
+
+    def execute(self, sql, params=None):
+        if self.postgres:
+            sql = sql.replace("?", "%s")
+        return self.connection.execute(sql, params or ())
+
+    def __getattr__(self, name):
+        return getattr(self.connection, name)
+
+
 from authlib.integrations.flask_client import OAuth
 
 
@@ -12,9 +30,9 @@ def get_db():
     if "db" not in g:
         database_url = current_app.config["DATABASE_URL"]
         if database_url:
-            g.db = psycopg.connect(database_url, row_factory=dict_row)
+            g.db = DatabaseConnection(psycopg.connect(database_url, row_factory=dict_row), postgres=True)
         else:
-            g.db = sqlite3.connect(current_app.config["DATABASE"])
+            g.db = DatabaseConnection(sqlite3.connect(current_app.config["DATABASE"]), postgres=False)
             g.db.row_factory = sqlite3.Row
             g.db.execute("PRAGMA foreign_keys=ON")
     return g.db
