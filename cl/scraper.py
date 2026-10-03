@@ -1,6 +1,6 @@
 import re
 import functools
-from datetime import datetime, timedelta
+from datetime import datetime
 from urllib.parse import quote_plus, urlencode, urldefrag, urljoin, urlparse
 
 import requests
@@ -323,7 +323,9 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
     print(f"Craigslist result rows found: {len(rows)}")
 
     listings, seen = [], set()
-    now = datetime.now()
+    # Fetching every listing detail page can turn a single search into hundreds of HTTP requests.
+    # Keep the search result page as the source of truth and enrich only the first few listings.
+    detail_enrichment_limit = 25
 
     for row in rows:
         title_el = row.select_one(
@@ -345,8 +347,6 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
 
         time_el = row.select_one("time, .result-date")
         posted = _posted_at(time_el.get("datetime") if time_el else None)
-        if posted and now - posted > timedelta(days=1):
-            continue
 
         price_el = row.select_one(".result-price, .price, .priceinfo")
         location_el = row.select_one(".result-hood, .nearby, .location")
@@ -358,7 +358,7 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
 
         image_url = None
         description = None
-        if post_url:
+        if post_url and len(listings) < detail_enrichment_limit:
             try:
                 detail = requests.get(post_url, headers=DEFAULT_HEADERS, timeout=15)
                 if detail.ok:
