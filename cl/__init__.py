@@ -32,9 +32,10 @@ def get_db():
         if database_url:
             g.db = DatabaseConnection(psycopg.connect(database_url, row_factory=dict_row), postgres=True)
         else:
-            g.db = DatabaseConnection(sqlite3.connect(current_app.config["DATABASE"]), postgres=False)
-            g.db.row_factory = sqlite3.Row
-            g.db.execute("PRAGMA foreign_keys=ON")
+            connection = sqlite3.connect(current_app.config["DATABASE"])
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys=ON")
+            g.db = DatabaseConnection(connection, postgres=False)
     return g.db
 
 
