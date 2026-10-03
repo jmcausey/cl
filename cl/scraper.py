@@ -288,6 +288,35 @@ def _description(value):
     value = re.sub(r"\bQR\s+Code\s+Link\s+to\s+This\s+Post\b", "", value, flags=re.I)
     return re.sub(r"\s+", " ", value).strip() or None
 
+
+def _image_url(element, base_url):
+    """Extract a usable image URL from Craigslist result/detail markup."""
+    if element is None:
+        return None
+
+    for attribute in ("data-src", "data-original", "src"):
+        value = element.get(attribute)
+        if value:
+            return urljoin(base_url, value.strip())
+
+    srcset = element.get("srcset")
+    if srcset:
+        candidates = [item.strip().split(" ")[0] for item in srcset.split(",")]
+        if candidates:
+            return urljoin(base_url, candidates[-1])
+
+    return None
+
+
+def _listing_image(row, base_url):
+    """Find the listing thumbnail exposed on the search result page."""
+    image = row.select_one(
+        "img[data-src], img[data-original], img[src], "
+        ".thumb img, .cl-thumb img, a.result-image img"
+    )
+    return _image_url(image, base_url)
+
+
 def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=None,
                             search_url=None, category=None,
                             area_label=None, radius=100):
@@ -356,15 +385,29 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
             if location_el else None
         )
 
-        image_url = None
+        # Craigslist normally exposes a thumbnail directly in the search
+        # result. Use that first so every listing can keep its image without
+        # requiring an expensive detail-page request.
+        image_url = _listing_image(row, target_url)
         description = None
         if post_url and len(listings) < detail_enrichment_limit:
             try:
                 detail = requests.get(post_url, headers=DEFAULT_HEADERS, timeout=15)
                 if detail.ok:
                     ds = BeautifulSoup(detail.text, "html.parser")
-                    img = ds.select_one('meta[property="og:image"]')
-                    image_url = img.get("content") if img else None
+
+                    if not image_url:
+                        image_url = (
+                            _image_url(ds.select_one('meta[property="og:image"]'), target_url)
+                            or _image_url(
+                                ds.select_one(
+                                    ".gallery img, .swipe-wrap img, #thumbs img, "
+                                    "img[data-img-src], img[data-src]"
+                                ),
+                                target_url,
+                            )
+                        )
+
                     body = ds.select_one("#postingbody, .postingbody")
                     desc = ds.select_one(
                         'meta[property="og:description"], meta[name="description"]'
