@@ -1,139 +1,85 @@
-from flask import Blueprint, flash, g, jsonify, redirect, render_template, request, url_for
-from urllib.parse import urlparse
 from datetime import datetime
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from . import get_db
-from .auth import login_required
-from .categories import CRAIGSLIST_CATEGORIES, CRAIGSLIST_CATEGORY_GROUPS
-from .scraper import get_craigslist_listings, store_listing
+from .jobs import execute_job
 
 bp = Blueprint("cl", __name__)
 
 @bp.route("/")
 def index():
-    return _feed("all", "Craigslist Listings")
-
-@bp.route("/pets")
-def pets():
-    return _feed("pet", "Craigslist Pets")
-
-def _feed(category, title):
-    db = get_db()
-    where = "category = ?" if category != "all" else "1 = 1"
-    params = (category,) if category != "all" else ()
-    listings = db.execute(
-        f"""SELECT * FROM craigslist_postings
-            WHERE {where}
-              AND (datetime(scraped_at) >= datetime('now', '-1 day')
-                   OR status = 'pending')
-              AND status != 'complete'
-            ORDER BY COALESCE(posted_at, scraped_at) DESC, id DESC""",
-        params,
+    listings = get_db().execute(
+        """SELECT * FROM craigslist_postings
+           WHERE status != 'hidden'
+           ORDER BY COALESCE(posted_at, scraped_at) DESC, id DESC
+           LIMIT 200"""
     ).fetchall()
-    return render_template("index.html", listings=listings, feed_title=title)
+    return render_template("index.html", listings=listings)
 
-@bp.route("/api/latest-id")
-def latest_id():
-    row = get_db().execute(
-        """SELECT id FROM craigslist_postings
-           WHERE status != 'complete'
-             AND (datetime(scraped_at) >= datetime('now', '-1 day')
-                  OR status = 'pending')
-           ORDER BY COALESCE(posted_at, scraped_at) DESC, id DESC LIMIT 1"""
-    ).fetchone()
-    return jsonify({"latest_id": row["id"] if row else 0})
-
-@bp.route("/jobs", methods=("GET", "POST"))
-@login_required
-def jobs():
+@bp.route("/control", methods=("GET", "POST"))
+def control():
     db = get_db()
     if request.method == "POST":
         action = request.form.get("action")
         if action == "delete":
-            db.execute("DELETE FROM craigslist_jobs WHERE id = ?", (request.form["job_id"],))
-        else:
-            try:
-                values = _job_values(request.form)
-            except ValueError as exc:
-                flash(str(exc), "error")
-                return redirect(url_for("cl.jobs"))
+            db.execute("DELETE FROM craigslist_jobs WHERE id=?", (request.form["job_id"],))
+            db.commit()
+            flash("Search removed.", "success")
+            return redirect(url_for("cl.control"))
+        if action == "run":
+            job = db.execute("SELECT * FROM craigslist_jobs WHERE id=?", (request.form["job_id"],)).fetchone()
+            if job is None:
+                flash("Search not found.", "error")
+            else:
+                try:
+                    inserted = execute_job(dict(job))
+                    flash(f"Search completed: {inserted} new listings published.", "success")
+                except Exception as exc:
+                    flash(f"Search failed: {exc}", "error")
+            return redirect(url_for("cl.control"))
+        try:
+            name = request.form["name"].strip()
+            location = request.form["location"].strip()
+            term = request.form["term"].strip()
+            category = request.form.get("category", "sss").strip()
+            radius = max(0, min(int(request.form.get("radius", "0")), 500))
+            run_times = request.form.get("run_times", "").strip()
+            enabled = 1 if request.form.get("enabled") else 0
+            if not name or not location or not term:
+                raise ValueError("Name, location, and search term are required.")
+            for value in run_times.split(","):
+                if value.strip():
+                    datetime.strptime(value.strip(), "%H:%M")
             job_id = request.form.get("job_id")
-            if values[-2]:
-                db.execute("UPDATE craigslist_jobs SET is_default_location=0 WHERE id != ?", (job_id or -1,))
             if job_id:
                 db.execute(
-                    """UPDATE craigslist_jobs SET name=?, term=?, category=?, radius=?,
-                       run_times=?, location_name=?, location_url=?, is_default_location=?,
-                       enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                    (*values, job_id),
+                    """UPDATE craigslist_jobs SET name=?, location=?, term=?, category=?,
+                       radius=?, run_times=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (name, location, term, category, radius, run_times, enabled, job_id),
                 )
             else:
-                job_key = request.form.get("job_key") or values[0].lower().replace(" ", "-")
+                job_key = f"{name.lower().replace(' ', '-')}-{datetime.now().timestamp()}"
                 db.execute(
                     """INSERT INTO craigslist_jobs
-                       (job_key,name,term,category,radius,run_times,location_name,location_url,
-                        is_default_location,enabled)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                    (job_key, *values),
+                       (job_key,name,location,term,category,radius,run_times,enabled)
+                       VALUES (?,?,?,?,?,?,?,?)""",
+                    (job_key, name, location, term, category, radius, run_times, enabled),
                 )
-        db.commit()
-        flash("Craigslist search jobs updated.", "success")
-        return redirect(url_for("cl.jobs"))
+            db.commit()
+            flash("Search saved.", "success")
+        except (KeyError, ValueError) as exc:
+            flash(str(exc) or "Invalid search settings.", "error")
+        return redirect(url_for("cl.control"))
+    jobs = db.execute("SELECT * FROM craigslist_jobs ORDER BY enabled DESC, name COLLATE NOCASE").fetchall()
+    return render_template("control.html", jobs=jobs)
 
-    jobs = db.execute(
-        """SELECT * FROM craigslist_jobs
-           ORDER BY enabled DESC, name COLLATE NOCASE"""
-    ).fetchall()
-    return render_template(
-        "jobs.html", jobs=jobs, category_groups=CRAIGSLIST_CATEGORY_GROUPS
-    )
-
-def _job_values(form):
-    name = form.get("name", "").strip()
-    term = form.get("term", "").strip()
-    category = form.get("category", "sss").strip()
-    if category not in CRAIGSLIST_CATEGORIES:
-        raise ValueError("Invalid Craigslist category.")
-    try:
-        radius = int(form.get("radius", "100"))
-    except ValueError:
-        radius = 100
-    radius = max(5, min(radius, 500))
-    run_times = form.get("run_times", "06:00").strip()
-    for run_time in run_times.split(","):
-        try:
-            datetime.strptime(run_time.strip(), "%H:%M")
-        except ValueError:
-            raise ValueError("Run times must use HH:MM format.")
-    location_name = form.get("location_name", "East Texas").strip()
-    location_url = form.get(
-        "location_url", "https://easttexas.craigslist.org/search/sss"
-    ).strip()
-    parsed = urlparse(location_url)
-    if parsed.scheme != "https" or not parsed.netloc or "craigslist.org" not in parsed.netloc:
-        raise ValueError("Location URL must be an HTTPS Craigslist URL.")
-    is_default = 1 if form.get("is_default_location") else 0
-    enabled = 1 if form.get("enabled") else 0
-    if not name or not term:
-        raise ValueError("Name and search term are required.")
-    return (name, term, category, radius, run_times, location_name, location_url, is_default, enabled)
-
-@bp.route("/jobs/<int:job_id>/run", methods=("POST",))
-@login_required
-def run_job(job_id):
-    job = get_db().execute("SELECT * FROM craigslist_jobs WHERE id=?", (job_id,)).fetchone()
-    if job is None:
-        return ("Job not found", 404)
-    listings = get_craigslist_listings(
-        query=job["term"], category=job["category"],
-        search_url=job["location_url"], area_label=job["location_name"],
-        radius=job["radius"], max_results=None,
-    )
+@bp.route("/listing/<int:listing_id>/hide", methods=("POST",))
+def hide_listing(listing_id):
     db = get_db()
-    inserted = sum(store_listing(item, db) for item in listings)
-    db.execute(
-        "UPDATE craigslist_jobs SET last_run_at=CURRENT_TIMESTAMP WHERE id=?",
-        (job_id,),
-    )
+    db.execute("UPDATE craigslist_postings SET status='hidden' WHERE id=?", (listing_id,))
     db.commit()
-    flash(f"Imported {inserted} new Craigslist listings.", "success")
-    return redirect(url_for("cl.jobs"))
+    return redirect(url_for("cl.index"))
+
+@bp.route("/api/latest-id")
+def latest_id():
+    row = get_db().execute("SELECT id FROM craigslist_postings ORDER BY id DESC LIMIT 1").fetchone()
+    return {"latest_id": row["id"] if row else 0}
