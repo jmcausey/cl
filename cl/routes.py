@@ -115,7 +115,7 @@ def control():
         except (KeyError, ValueError) as exc:
             flash(str(exc) or "Invalid search settings.", "error")
         return redirect(url_for("cl.control"))
-    jobs = db.execute("SELECT * FROM craigslist_jobs ORDER BY enabled DESC, name COLLATE NOCASE").fetchall()
+    jobs = db.execute("SELECT * FROM craigslist_jobs ORDER BY enabled DESC, name").fetchall()
     return render_template("control.html", jobs=jobs)
 
 @bp.route("/listing/<int:listing_id>/hide", methods=("POST",))
