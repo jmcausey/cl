@@ -1,4 +1,7 @@
 from datetime import datetime
+import subprocess
+import sys
+from pathlib import Path
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
 from . import get_db
 from .jobs import execute_job
@@ -58,29 +61,22 @@ def control():
             if job is None:
                 flash("Search not found.", "error")
             else:
-                try:
-                    inserted = execute_job(dict(job))
-                    db.execute(
-                        """UPDATE craigslist_jobs
-                           SET last_run_at=CURRENT_TIMESTAMP,
-                               last_status='completed',
-                               updated_at=CURRENT_TIMESTAMP
-                           WHERE id=?""",
-                        (job["id"],),
-                    )
-                    db.commit()
-                    flash(f"Search completed: {inserted} new listings published.", "success")
-                except Exception as exc:
-                    db.execute(
-                        """UPDATE craigslist_jobs
-                           SET last_run_at=CURRENT_TIMESTAMP,
-                               last_status='failed',
-                               updated_at=CURRENT_TIMESTAMP
-                           WHERE id=?""",
-                        (job["id"],),
-                    )
-                    db.commit()
-                    flash(f"Search failed: {exc}", "error")
+                db.execute(
+                    """UPDATE craigslist_jobs
+                       SET last_run_at=CURRENT_TIMESTAMP,
+                           last_status='running',
+                           updated_at=CURRENT_TIMESTAMP
+                       WHERE id=?""",
+                    (job["id"],),
+                )
+                db.commit()
+                project_root = Path(current_app.root_path).parent
+                subprocess.Popen(
+                    [sys.executable, str(project_root / "scheduler.py"), "--job-id", str(job["id"])],
+                    cwd=str(project_root),
+                    start_new_session=True,
+                )
+                flash("Search started. Results will appear as the job completes.", "success")
             return redirect(url_for("cl.control"))
         try:
             name = request.form["name"].strip()
