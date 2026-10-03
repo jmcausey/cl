@@ -174,19 +174,18 @@ def _description(value):
 def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=None,
                             search_url=None, category=None,
                             area_label=None, radius=100):
-    if search_url:
-        target_url, _ = urldefrag(search_url)
-    else:
-        encoded = quote_plus(query)
-        suffix = "zip" if category == "zip" else "sss"
-        target_url = f"{BASE_URL.rsplit('/',1)[0]}/{suffix}?query={encoded}&search_distance={radius}&postal=75751"
+    if not search_url:
+        raise ValueError("A Craigslist search URL is required.")
 
+    target_url, _ = urldefrag(search_url)
     known = {str(x) for x in (known_listing_ids or ())}
     try:
-        response = requests.get(target_url, headers=DEFAULT_HEADERS, timeout=15)
+        print(f"Craigslist search: {target_url}")
+        response = requests.get(target_url, headers=DEFAULT_HEADERS, timeout=20)
+        print(f"Craigslist response: HTTP {response.status_code} ({len(response.text)} bytes)")
         response.raise_for_status()
-    except requests.RequestException:
-        return []
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Craigslist request failed: {exc}") from exc
 
     soup = BeautifulSoup(response.text, "html.parser")
     listings, seen = [], set()
