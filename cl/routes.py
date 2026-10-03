@@ -89,7 +89,7 @@ def control():
             category = request.form.get("category", "sss").strip()
             radius = max(0, min(int(request.form.get("radius", "0")), 500))
             run_times = request.form.get("run_times", "").strip()
-            enabled = 1 if request.form.get("enabled") else 0
+            enabled = bool(request.form.get("enabled"))
             if not name or not location or not term:
                 raise ValueError("Name, location, and search term are required.")
             for value in run_times.split(","):
