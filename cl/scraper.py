@@ -12,6 +12,40 @@ DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
+def base_location_search_url(city, state=None, category="sss"):
+    """Build a Craigslist search URL centered on a city or city/state."""
+    if not city or not str(city).strip():
+        raise ValueError("City is required.")
+
+    location = str(city).strip()
+    if state and str(state).strip():
+        location = f"{location}, {str(state).strip()}"
+
+    if not re.fullmatch(r"[^,]+(?:,\\s*[A-Za-z]{2})?", location):
+        raise ValueError(
+            "Location must be a city or city/state, such as 'Athens' or 'Athens, TX'."
+        )
+
+    category = (category or "sss").strip().strip("/")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", category):
+        raise ValueError("Invalid Craigslist category.")
+
+    return (
+        f"https://www.craigslist.org/search/{category}"
+        f"?search_location={quote_plus(location)}"
+    )
+
+
+def get_base_location_search_url(location, category="sss"):
+    """Resolve a city or city/state string into a Craigslist search URL."""
+    if not location or not str(location).strip():
+        raise ValueError("Location is required.")
+
+    parts = [part.strip() for part in str(location).split(",", 1)]
+    if len(parts) == 1:
+        return base_location_search_url(parts[0], category=category)
+    return base_location_search_url(parts[0], parts[1], category=category)
+
 def _listing_id(row, url):
     value = row.get("data-pid") or row.get("data-id")
     if value:
