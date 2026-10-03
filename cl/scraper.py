@@ -192,14 +192,14 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
     listings, seen = [], set()
     now = datetime.now()
 
-    for row in soup.select(".result-row, .cl-search-result, li.cl-static-search-result"):
+    for row in rows:
         title_el = row.select_one(".result-title, .titlestring, .title, a.posting-title, a")
         if not title_el:
             continue
         title = title_el.get_text(strip=True)
         if "modem" in title.lower():
             continue
-        link = row.select_one("a.posting-title, a[href]")
+        link = row.select_one("a.posting-title, a.result-title, a[href]")
         post_url = urljoin(target_url, link.get("href", "")) if link else ""
         cid = _listing_id(row, post_url)
         if not cid or cid in known or cid in seen:
@@ -250,12 +250,12 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
 def store_listing(listing, db):
     cursor = db.execute(
         """INSERT OR IGNORE INTO craigslist_postings
-           (craigslist_id,title,price_text,price_amount,location,latitude,longitude,
+           (craigslist_id,title,price_text,price_amount,location,
             listing_url,category,search_query,posted_at,image_url,description)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (listing["craigslist_id"], listing["title"], listing.get("price_text"),
-         listing.get("price_amount"), listing.get("location"), listing.get("latitude"),
-         listing.get("longitude"), listing["listing_url"], listing.get("category"),
+         listing.get("price_amount"), listing.get("location"),
+         listing["listing_url"], listing.get("category"),
          listing.get("search_query"), listing.get("posted_at"), listing.get("image_url"),
          listing.get("description")),
     )
