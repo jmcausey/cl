@@ -13,6 +13,18 @@ DEFAULT_HEADERS = {
 
 CRAILSITES_URL = "https://www.craigslist.org/about/sites"
 
+def _normalize_site_url(url):
+    """Convert Craigslist directory /area/<site> links to the actual site."""
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.rstrip("/")
+    if host in {"www.craigslist.org", "craigslist.org"}:
+        match = re.fullmatch(r"/area/([^/]+)", path)
+        if match:
+            return f"https://{match.group(1)}.craigslist.org"
+    return url.rstrip("/")
+
+
 def _normalize_location(value):
     return re.sub(r"[^a-z0-9]+", " ", value.lower()).strip()
 
@@ -31,7 +43,7 @@ def _craigslist_sites():
         name = element.get_text(" ", strip=True)
         if not href or not name or "craigslist.org" not in href:
             continue
-        sites.append({"name": name, "url": href.rstrip("/"), "context": context})
+        sites.append({"name": name, "url": _normalize_site_url(href), "context": context})
     return sites
 
 def _location_aliases(location):
