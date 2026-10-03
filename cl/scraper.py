@@ -294,7 +294,7 @@ def _image_url(element, base_url):
     if element is None:
         return None
 
-    for attribute in ("data-src", "data-original", "src", "content"):
+    for attribute in ("data-img-src", "data-src", "data-original", "src", "content"):
         value = element.get(attribute)
         if value:
             return urljoin(base_url, value.strip())
