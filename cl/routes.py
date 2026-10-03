@@ -32,8 +32,26 @@ def control():
             else:
                 try:
                     inserted = execute_job(dict(job))
+                    db.execute(
+                        """UPDATE craigslist_jobs
+                           SET last_run_at=CURRENT_TIMESTAMP,
+                               last_status='completed',
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE id=?""",
+                        (job["id"],),
+                    )
+                    db.commit()
                     flash(f"Search completed: {inserted} new listings published.", "success")
                 except Exception as exc:
+                    db.execute(
+                        """UPDATE craigslist_jobs
+                           SET last_run_at=CURRENT_TIMESTAMP,
+                               last_status='failed',
+                               updated_at=CURRENT_TIMESTAMP
+                           WHERE id=?""",
+                        (job["id"],),
+                    )
+                    db.commit()
                     flash(f"Search failed: {exc}", "error")
             return redirect(url_for("cl.control"))
         try:
