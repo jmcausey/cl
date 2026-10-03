@@ -3,4 +3,4 @@ name = "cl"
 version = "0.1.0"
 description = "Standalone Craigslist search and listing application"
 requires-python = ">=3.10"
-dependencies = ["Flask", "Authlib", "requests", "beautifulsoup4"]
+dependencies = ["Flask", "Authlib", "requests", "beautifulsoup4", "psycopg[binary]", "gunicorn"]
