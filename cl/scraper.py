@@ -296,6 +296,36 @@ def resolve_craigslist_site(location):
         )
     return next(iter(unique.values()))["url"]
 
+def _resolve_city_state_site(location):
+    """Resolve a city/state through Craigslist's own location routing."""
+    raw = str(location).strip()
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if len(parts) < 2:
+        return None
+
+    city = re.sub(r"[^a-z0-9]+", "-", parts[0].lower()).strip("-")
+    state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
+    if not city or not state:
+        return None
+
+    location_url = f"https://www.craigslist.org/location/{city}-{state}"
+    try:
+        response = requests.get(
+            location_url,
+            headers=DEFAULT_HEADERS,
+            timeout=15,
+            allow_redirects=True,
+        )
+        hostname = (urlparse(response.url).hostname or "").lower()
+        if hostname.endswith(".craigslist.org") and hostname not in {
+            "www.craigslist.org", "craigslist.org"
+        }:
+            return f"https://{hostname}"
+    except requests.RequestException:
+        pass
+    return None
+
+
 def base_location_search_url(location, category="sss", query=None, radius=None):
     """Build a search URL for any Craigslist-supported city or regional site."""
     category = normalize_category(category)
@@ -322,10 +352,9 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
         city = re.sub(r"[^a-z0-9]+", "-", parts[0].lower()).strip("-")
         state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
         if city and state:
-            # Use the regional site plus its city slug. This avoids the
-            # bare www.craigslist.org geo-selection page, which does not
-            # expose search results to a normal requests client.
-            site_url = resolve_craigslist_site(location)
+            # Let Craigslist resolve the city to its regional site instead
+            # of maintaining a fragile city-to-region mapping ourselves.
+            site_url = _resolve_city_state_site(location) or resolve_craigslist_site(location)
             params["cat"] = category
             query_string = urlencode(params)
             return f"{site_url}/search/{city}-{state}/{category}" + (
