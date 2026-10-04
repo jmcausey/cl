@@ -292,8 +292,7 @@ def resolve_craigslist_site(location):
     return next(iter(unique.values()))["url"]
 
 def base_location_search_url(location, category="sss", query=None, radius=None):
-    """Build a search URL for any Craigslist-supported worldwide site."""
-    site_url = resolve_craigslist_site(location)
+    """Build a search URL for any Craigslist-supported city or regional site."""
     category = normalize_category(category)
     params = {}
     if query:
@@ -305,12 +304,36 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
             raise ValueError("Radius must be an integer.") from exc
         if radius < 0:
             raise ValueError("Radius cannot be negative.")
-        params["search_distance"] = radius
-    if category in {"ccc", "act", "ats", "kid", "cls", "eve", "grp", "com", "lnw", "lnf", "msc", "muc", "pet", "pol", "rid", "rnr", "vol"}:
+        if radius:
+            params["search_distance"] = radius
+
+    raw_location = str(location).strip()
+    parts = [part.strip() for part in raw_location.split(",") if part.strip()]
+
+    # Craigslist has a city-specific endpoint that avoids ambiguity when a
+    # city name exists in multiple states, e.g. Athens, TX vs Athens, GA.
+    if len(parts) >= 2:
+        city = re.sub(r"[^a-z0-9]+", "-", parts[0].lower()).strip("-")
+        state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
+        if city and state:
+            params["cat"] = category
+            query_string = urlencode(params)
+            return f"https://www.craigslist.org/search/city/{city}-{state}" + (
+                f"?{query_string}" if query_string else ""
+            )
+
+    site_url = resolve_craigslist_site(location)
+    if category in {
+        "ccc", "act", "ats", "kid", "cls", "eve", "grp", "com", "lnw",
+        "lnf", "msc", "muc", "pet", "pol", "rid", "rnr", "vol"
+    }:
         params["cat"] = category
         query_string = urlencode(params)
         site_name = urlparse(site_url).hostname.split(".")[0]
-        return f"{site_url}/search/area/{site_name}" + (f"?{query_string}" if query_string else "")
+        return f"{site_url}/search/area/{site_name}" + (
+            f"?{query_string}" if query_string else ""
+        )
+
     query_string = urlencode(params)
     return f"{site_url}/search/{category}" + (f"?{query_string}" if query_string else "")
 
