@@ -164,6 +164,13 @@ def _craigslist_sites():
         sites.append({"name": name, "url": _normalize_site_url(absolute_href), "context": context})
     return sites
 
+# Craigslist city/state routing overrides for places that belong to a
+# regional site rather than having their own Craigslist hostname.
+CITY_REGION_OVERRIDES = {
+    "athens tx": "https://easttexas.craigslist.org",
+}
+
+
 STATE_NAMES = {
     "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas",
     "ca": "california", "co": "colorado", "ct": "connecticut", "de": "delaware",
@@ -307,6 +314,10 @@ def _resolve_city_state_site(location):
     state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
     if not city or not state:
         return None
+
+    override = CITY_REGION_OVERRIDES.get(f"{city} {state}")
+    if override:
+        return override
 
     location_url = f"https://www.craigslist.org/location/{city}-{state}"
     try:
