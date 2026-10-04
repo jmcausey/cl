@@ -55,6 +55,14 @@ CATEGORY_LABELS = {
     "gigs": "Gigs",
     "res": "Resumes",
     "ccc": "Community — All",
+    "act": "Community — Activities",
+    "ats": "Community — Artists",
+    "kid": "Community — Childcare",
+    "cls": "Community — Classes",
+    "eve": "Community — Events",
+    "grp": "Community — Groups",
+    "lnw": "Community — Local News",
+    "vol": "Community — Volunteers",
     "community": "Community — All",
     "pet": "Community — Pets",
     "pol": "Community — Politics",
@@ -244,6 +252,11 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
         if radius < 0:
             raise ValueError("Radius cannot be negative.")
         params["search_distance"] = radius
+    if category in {"ccc", "act", "ats", "kid", "cls", "eve", "grp", "com", "lnw", "lnf", "msc", "muc", "pet", "pol", "rid", "rnr", "vol"}:
+        params["cat"] = category
+        query_string = urlencode(params)
+        site_name = urlparse(site_url).hostname.split(".")[0]
+        return f"{site_url}/search/area/{site_name}" + (f"?{query_string}" if query_string else "")
     query_string = urlencode(params)
     return f"{site_url}/search/{category}" + (f"?{query_string}" if query_string else "")
 
