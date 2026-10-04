@@ -6,6 +6,7 @@ from urllib.parse import quote_plus, urlencode, urldefrag, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from .storage import store_posting, store_posting_image
 
 CATEGORY_LABELS = {
     "sss": "For Sale — All",
@@ -630,10 +631,14 @@ def _listing_image(row, base_url):
 
 def enrich_missing_images(db, limit=None):
     """Backfill images for stored listings without making a large scrape request."""
-    sql = """SELECT id, craigslist_id, listing_url
-             FROM craigslist_postings
-             WHERE image_url IS NULL OR image_url = ''
-             ORDER BY id DESC"""
+    sql = """SELECT p.id, p.external_id AS craigslist_id, p.source_url AS listing_url
+             FROM postings p
+             WHERE p.source = 'craigslist'
+               AND NOT EXISTS (
+                   SELECT 1 FROM media m
+                   WHERE m.posting_id = p.id AND m.is_primary = TRUE
+               )
+             ORDER BY p.id DESC"""
     params = ()
     if limit is not None:
         sql += " LIMIT ?"
@@ -673,15 +678,8 @@ def enrich_missing_images(db, limit=None):
             if not image_url:
                 continue
 
-            cursor = db.execute(
-                """UPDATE craigslist_postings
-                   SET image_url=?
-                   WHERE id=?
-                     AND (image_url IS NULL OR image_url='')""",
-                (image_url, row["id"]),
-            )
-            if cursor.rowcount == 1:
-                enriched += 1
+            store_posting_image(db, row["id"], image_url)
+            enriched += 1
         except requests.RequestException:
             continue
 
@@ -839,6 +837,7 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
             "posted_at": posted.isoformat(sep=" ") if posted else None,
             "image_url": image_url,
             "description": description,
+            "category_code": category_key,
         })
         return True
 
@@ -900,27 +899,16 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
     return listings
 
 
-def store_listing(listing, db, post_to_blog=True):
-    status = "published" if post_to_blog else "unpublished"
-    if post_to_blog:
-        db.execute(
-            "UPDATE craigslist_postings SET status='published' "
-            "WHERE craigslist_id=? AND status='unpublished'",
-            (listing["craigslist_id"],),
-        )
-    cursor = db.execute(
-        """INSERT INTO craigslist_postings
-           (craigslist_id,title,price_text,price_amount,location,
-            listing_url,category,search_query,posted_at,image_url,description,status)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-           ON CONFLICT (craigslist_id) DO NOTHING""",
-        (listing["craigslist_id"], listing["title"], listing.get("price_text"),
-         listing.get("price_amount"), listing.get("location"),
-         listing["listing_url"], listing.get("category"),
-         listing.get("search_query"), listing.get("posted_at"), listing.get("image_url"),
-         listing.get("description"), status),
+def store_listing(listing, db, post_to_blog=True, region_url=None, status=None,
+                  review_status=None):
+    return store_posting(
+        db,
+        listing,
+        region_url=region_url,
+        post_to_blog=post_to_blog,
+        status=status,
+        review_status=review_status,
     )
-    return cursor.rowcount == 1
 
 def run_scraper(query="surfboard", max_results=5, post_to_blog=True, **kwargs):
     from . import create_app, get_db
@@ -928,13 +916,18 @@ def run_scraper(query="surfboard", max_results=5, post_to_blog=True, **kwargs):
     with app.app_context():
         db = get_db()
         known = {
-            row["craigslist_id"]
+            row["external_id"]
             for row in db.execute(
-                "SELECT craigslist_id FROM craigslist_postings WHERE status != 'unpublished'"
+                "SELECT external_id FROM postings "
+                "WHERE source='craigslist' AND status != 'draft'"
             )
         }
         listings = get_craigslist_listings(query=query, max_results=max_results, known_listing_ids=known, **kwargs)
-        inserted = sum(store_listing(item, db, post_to_blog=post_to_blog) for item in listings)
+        region_url = kwargs.get("search_url")
+        inserted = sum(
+            store_listing(item, db, post_to_blog=post_to_blog, region_url=region_url)
+            for item in listings
+        )
         db.commit()
 
         enriched = enrich_missing_images(db)

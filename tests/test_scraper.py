@@ -1,5 +1,6 @@
 import unittest
 import sqlite3
+from pathlib import Path
 from bs4 import BeautifulSoup
 from unittest.mock import Mock, patch
 
@@ -14,6 +15,7 @@ from cl.scraper import (
     normalize_category,
     store_listing,
 )
+from cl.storage import seed_taxonomy
 
 
 class CategoryNormalizationTests(unittest.TestCase):
@@ -125,23 +127,10 @@ class CategoryNormalizationTests(unittest.TestCase):
 
     def test_unpublished_listing_can_be_published_by_later_job(self):
         db = sqlite3.connect(":memory:")
-        db.execute(
-            """CREATE TABLE craigslist_postings (
-                   id INTEGER PRIMARY KEY,
-                   craigslist_id TEXT NOT NULL UNIQUE,
-                   title TEXT NOT NULL,
-                   price_text TEXT,
-                   price_amount REAL,
-                   location TEXT,
-                   listing_url TEXT NOT NULL,
-                   category TEXT,
-                   search_query TEXT,
-                   posted_at TEXT,
-                   image_url TEXT,
-                   description TEXT,
-                   status TEXT NOT NULL DEFAULT 'published'
-               )"""
-        )
+        db.row_factory = sqlite3.Row
+        schema_path = Path(__file__).resolve().parents[1] / "schema.sql"
+        db.executescript(schema_path.read_text())
+        seed_taxonomy(db)
         listing = {
             "craigslist_id": "listing-1",
             "title": "Test listing",
@@ -150,24 +139,24 @@ class CategoryNormalizationTests(unittest.TestCase):
 
         self.assertTrue(store_listing(listing, db, post_to_blog=False))
         status = db.execute(
-            "SELECT status FROM craigslist_postings WHERE craigslist_id=?",
+            "SELECT status FROM postings WHERE external_id=?",
             (listing["craigslist_id"],),
         ).fetchone()[0]
-        self.assertEqual(status, "unpublished")
+        self.assertEqual(status, "draft")
 
         self.assertFalse(store_listing(listing, db, post_to_blog=True))
         status = db.execute(
-            "SELECT status FROM craigslist_postings WHERE craigslist_id=?",
+            "SELECT status FROM postings WHERE external_id=?",
             (listing["craigslist_id"],),
         ).fetchone()[0]
-        self.assertEqual(status, "published")
+        self.assertEqual(status, "active")
 
         store_listing(listing, db, post_to_blog=False)
         status = db.execute(
-            "SELECT status FROM craigslist_postings WHERE craigslist_id=?",
+            "SELECT status FROM postings WHERE external_id=?",
             (listing["craigslist_id"],),
         ).fetchone()[0]
-        self.assertEqual(status, "published")
+        self.assertEqual(status, "active")
 
 
 if __name__ == "__main__":

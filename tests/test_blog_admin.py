@@ -1,6 +1,26 @@
 import sqlite3
 
 from cl import create_app, get_db, init_db
+from cl.scraper import store_listing
+
+
+def insert_scraped_listing(db, craigslist_id, title, status="published"):
+    posting_status = {
+        "hidden": "deleted",
+        "unpublished": "draft",
+    }.get(status, "active")
+    review_status = status if status in {"pending", "completed"} else None
+    store_listing(
+        {
+            "craigslist_id": craigslist_id,
+            "title": title,
+            "listing_url": "https://example.com/" + craigslist_id,
+            "category": "Cars + Trucks",
+        },
+        db,
+        status=posting_status,
+        review_status=review_status,
+    )
 
 
 def test_blog_admin_route_exists():
@@ -51,10 +71,7 @@ def test_admin_can_update_scraped_listing_status(tmp_path):
             "INSERT INTO users (google_sub, email, name) VALUES (?, ?, ?)",
             ('admin-1', 'admin@example.com', 'Admin'),
         )
-        db.execute(
-            "INSERT INTO craigslist_postings (craigslist_id, title, listing_url) VALUES (?, ?, ?)",
-            ('scraped-1', 'Scraped listing', 'https://example.com/listing'),
-        )
+        insert_scraped_listing(db, 'scraped-1', 'Scraped listing')
         db.commit()
 
     client = app.test_client()
@@ -66,9 +83,9 @@ def test_admin_can_update_scraped_listing_status(tmp_path):
     assert response.status_code == 302
     with app.app_context():
         row = get_db().execute(
-            "SELECT status FROM craigslist_postings WHERE id = 1"
+            "SELECT review_status FROM postings WHERE id = 1"
         ).fetchone()
-        assert row['status'] == 'completed'
+        assert row['review_status'] == 'completed'
 
 
 def test_listings_nav_opens_posts_not_account_name(tmp_path):
@@ -88,10 +105,7 @@ def test_listings_nav_opens_posts_not_account_name(tmp_path):
             "INSERT INTO blog_posts (user_id, title, body) VALUES (?, ?, ?)",
             (1, 'Blog listing', 'Blog body'),
         )
-        get_db().execute(
-            "INSERT INTO craigslist_postings (craigslist_id, title, listing_url) VALUES (?, ?, ?)",
-            ('scraped-1', 'Scraped listing', 'https://example.com/listing'),
-        )
+        insert_scraped_listing(get_db(), 'scraped-1', 'Scraped listing')
         get_db().commit()
 
     client = app.test_client()
@@ -192,12 +206,7 @@ def test_unpublished_scraped_listings_are_excluded_from_public_pages(tmp_path):
             ('public-1', 'Public scraped listing', 'published'),
             ('hidden-1', 'Hidden scraped listing', 'hidden'),
         ):
-            db.execute(
-                """INSERT INTO craigslist_postings
-                   (craigslist_id, title, listing_url, status)
-                   VALUES (?, ?, ?, ?)""",
-                (craigslist_id, title, 'https://example.com/' + craigslist_id, status),
-            )
+            insert_scraped_listing(db, craigslist_id, title, status)
         db.commit()
 
     client = app.test_client()
@@ -206,3 +215,56 @@ def test_unpublished_scraped_listings_are_excluded_from_public_pages(tmp_path):
         assert 'Public scraped listing' in html
         assert 'Private scraped listing' not in html
         assert 'Hidden scraped listing' not in html
+
+
+def test_init_db_migrates_legacy_scraped_listings(tmp_path):
+    db_path = tmp_path / 'legacy.sqlite'
+    connection = sqlite3.connect(db_path)
+    connection.execute(
+        """CREATE TABLE craigslist_postings (
+               id INTEGER PRIMARY KEY AUTOINCREMENT,
+               craigslist_id TEXT NOT NULL UNIQUE,
+               title TEXT NOT NULL,
+               price_text TEXT,
+               price_amount REAL,
+               location TEXT,
+               listing_url TEXT NOT NULL,
+               category TEXT,
+               search_query TEXT,
+               posted_at TEXT,
+               scraped_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               image_url TEXT,
+               description TEXT,
+               status TEXT NOT NULL DEFAULT 'published'
+           )"""
+    )
+    connection.execute(
+        """INSERT INTO craigslist_postings
+           (craigslist_id, title, location, listing_url, category, image_url, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        ('legacy-1', 'Old truck', 'Dallas', 'https://example.com/legacy-1',
+         'Cars + Trucks', 'https://images.example/legacy.jpg', 'unpublished'),
+    )
+    connection.commit()
+    connection.close()
+
+    app = create_app({'TESTING': True, 'DATABASE': str(db_path)})
+    with app.app_context():
+        init_db()
+        db = get_db()
+        row = db.execute(
+            """SELECT p.external_id, p.status, p.source_url, c.short_code, m.url
+               FROM postings p
+               JOIN categories c ON c.id=p.category_id
+               LEFT JOIN media m ON m.posting_id=p.id AND m.is_primary=TRUE"""
+        ).fetchone()
+        legacy_table = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='craigslist_postings'"
+        ).fetchone()
+
+    assert row['external_id'] == 'legacy-1'
+    assert row['status'] == 'draft'
+    assert row['source_url'] == 'https://example.com/legacy-1'
+    assert row['short_code'] == 'cta'
+    assert row['url'] == 'https://images.example/legacy.jpg'
+    assert legacy_table is None

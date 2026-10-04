@@ -6,6 +6,7 @@ from flask import Blueprint, current_app, flash, jsonify, redirect, render_templ
 from . import get_db
 from .jobs import execute_job
 from .scraper import craigslist_locations
+from .storage import PUBLIC_POSTINGS_QUERY
 
 bp = Blueprint("cl", __name__)
 
@@ -48,10 +49,8 @@ def is_blog_admin(user):
 @bp.route("/")
 def index():
     listings = get_db().execute(
-        """SELECT * FROM craigslist_postings
-           WHERE status NOT IN ('hidden', 'unpublished')
-           ORDER BY COALESCE(posted_at, scraped_at) DESC, id DESC
-           LIMIT 200"""
+        PUBLIC_POSTINGS_QUERY +
+        " ORDER BY COALESCE(p.posted_at, p.created_at) DESC, p.id DESC LIMIT 200"
     ).fetchall()
     return render_template("index.html", listings=listings)
 
@@ -128,7 +127,7 @@ def control():
 @bp.route("/listing/<int:listing_id>/hide", methods=("POST",))
 def hide_listing(listing_id):
     db = get_db()
-    db.execute("UPDATE craigslist_postings SET status='hidden' WHERE id=?", (listing_id,))
+    db.execute("UPDATE postings SET status='deleted' WHERE id=?", (listing_id,))
     db.commit()
     return redirect(url_for("cl.index"))
 
@@ -150,7 +149,7 @@ def craigslist_listing_status(listing_id):
 
     db = get_db()
     cursor = db.execute(
-        "UPDATE craigslist_postings SET status = ? WHERE id = ? AND status != 'hidden'",
+        "UPDATE postings SET review_status = ? WHERE id = ? AND status = 'active'",
         (status, listing_id),
     )
     db.commit()
@@ -240,14 +239,12 @@ def blog():
         """
     ).fetchall()
     listings = db.execute(
-        """SELECT * FROM craigslist_postings
-           WHERE status NOT IN ('hidden', 'unpublished')
-           ORDER BY COALESCE(posted_at, scraped_at) DESC, id DESC
-           LIMIT 200"""
+        PUBLIC_POSTINGS_QUERY +
+        " ORDER BY COALESCE(p.posted_at, p.created_at) DESC, p.id DESC LIMIT 200"
     ).fetchall()
     latest_listing_id = db.execute(
-        "SELECT COALESCE(MAX(id), 0) AS latest_id FROM craigslist_postings "
-        "WHERE status NOT IN ('hidden', 'unpublished')"
+        "SELECT COALESCE(MAX(id), 0) AS latest_id FROM postings "
+        "WHERE source='craigslist' AND status='active'"
     ).fetchone()["latest_id"]
     return render_template(
         "blog.html",
@@ -410,7 +407,7 @@ def blog_status(post_id):
 @bp.route("/api/latest-id")
 def latest_id():
     row = get_db().execute(
-        "SELECT id FROM craigslist_postings "
-        "WHERE status NOT IN ('hidden', 'unpublished') ORDER BY id DESC LIMIT 1"
+        "SELECT id FROM postings WHERE source='craigslist' AND status='active' "
+        "ORDER BY id DESC LIMIT 1"
     ).fetchone()
     return {"latest_id": row["id"] if row else 0}

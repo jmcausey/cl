@@ -54,6 +54,7 @@ def init_db():
     schema_name = "schema_postgres.sql" if _is_postgres() else "schema.sql"
     schema = (Path(current_app.root_path).parent / schema_name).read_text()
     if _is_postgres():
+        db.execute("SELECT pg_advisory_xact_lock(824601223)")
         db.execute(schema)
         db.execute(
             "ALTER TABLE craigslist_jobs "
@@ -67,6 +68,9 @@ def init_db():
                 "ALTER TABLE craigslist_jobs "
                 "ADD COLUMN post_to_blog INTEGER NOT NULL DEFAULT 1"
             )
+    from .storage import migrate_legacy_postings, seed_taxonomy
+    seed_taxonomy(db)
+    migrate_legacy_postings(db)
     db.commit()
 
 
