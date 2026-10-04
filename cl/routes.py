@@ -49,7 +49,7 @@ def is_blog_admin(user):
 def index():
     listings = get_db().execute(
         """SELECT * FROM craigslist_postings
-           WHERE status != 'hidden'
+           WHERE status NOT IN ('hidden', 'unpublished')
            ORDER BY COALESCE(posted_at, scraped_at) DESC, id DESC
            LIMIT 200"""
     ).fetchall()
@@ -95,6 +95,7 @@ def control():
             radius = max(0, min(int(request.form.get("radius", "0")), 500))
             run_times = request.form.get("run_times", "").strip()
             enabled = bool(request.form.get("enabled"))
+            post_to_blog = bool(request.form.get("post_to_blog"))
             if not name or not location or not term:
                 raise ValueError("Name, location, and search term are required.")
             for value in run_times.split(","):
@@ -103,17 +104,18 @@ def control():
             job_id = request.form.get("job_id")
             if job_id:
                 db.execute(
-                    """UPDATE craigslist_jobs SET name=?, location=?, term=?, category=?,
-                       radius=?, run_times=?, enabled=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                    (name, location, term, category, radius, run_times, enabled, job_id),
+                          """UPDATE craigslist_jobs SET name=?, location=?, term=?, category=?,
+                              radius=?, run_times=?, enabled=?, post_to_blog=?,
+                              updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                          (name, location, term, category, radius, run_times, enabled, post_to_blog, job_id),
                 )
             else:
                 job_key = f"{name.lower().replace(' ', '-')}-{datetime.now().timestamp()}"
                 db.execute(
                     """INSERT INTO craigslist_jobs
-                       (job_key,name,location,term,category,radius,run_times,enabled)
-                       VALUES (?,?,?,?,?,?,?,?)""",
-                    (job_key, name, location, term, category, radius, run_times, enabled),
+                              (job_key,name,location,term,category,radius,run_times,enabled,post_to_blog)
+                              VALUES (?,?,?,?,?,?,?,?,?)""",
+                          (job_key, name, location, term, category, radius, run_times, enabled, post_to_blog),
                 )
             db.commit()
             flash("Search saved.", "success")
@@ -239,12 +241,13 @@ def blog():
     ).fetchall()
     listings = db.execute(
         """SELECT * FROM craigslist_postings
-           WHERE status != 'hidden'
+           WHERE status NOT IN ('hidden', 'unpublished')
            ORDER BY COALESCE(posted_at, scraped_at) DESC, id DESC
            LIMIT 200"""
     ).fetchall()
     latest_listing_id = db.execute(
-        "SELECT COALESCE(MAX(id), 0) AS latest_id FROM craigslist_postings"
+        "SELECT COALESCE(MAX(id), 0) AS latest_id FROM craigslist_postings "
+        "WHERE status NOT IN ('hidden', 'unpublished')"
     ).fetchone()["latest_id"]
     return render_template(
         "blog.html",
@@ -406,5 +409,8 @@ def blog_status(post_id):
 
 @bp.route("/api/latest-id")
 def latest_id():
-    row = get_db().execute("SELECT id FROM craigslist_postings ORDER BY id DESC LIMIT 1").fetchone()
+    row = get_db().execute(
+        "SELECT id FROM craigslist_postings "
+        "WHERE status NOT IN ('hidden', 'unpublished') ORDER BY id DESC LIMIT 1"
+    ).fetchone()
     return {"latest_id": row["id"] if row else 0}

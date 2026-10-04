@@ -1,0 +1,86 @@
+@startuml
+package "Craigslist Domain Model" {
+
+    class Region {
+        + Integer id
+        + String name
+        + String subdomain
+        + String country_code
+        + String timezone
+        + getBaseUrl() : String
+    }
+
+    class SubRegion {
+        + Integer id
+        + Integer region_id
+        + String name
+        + String code
+    }
+
+    class Section {
+        + Integer id
+        + String name
+        + String route_prefix
+    }
+
+    class Category {
+        + Integer id
+        + Integer section_id
+        + String name
+        + String short_code
+        + Boolean allows_images
+        + Boolean requires_price
+        + getCanonicalPath(Region) : String
+    }
+
+    class Posting {
+        + Long id
+        + String uuid
+        + Integer region_id
+        + Integer subregion_id
+        + Integer category_id
+        + String title
+        + String body
+        + Decimal price
+        + String postal_code
+        + Double latitude
+        + Double longitude
+        + String status
+        + DateTime created_at
+        + DateTime updated_at
+        + getPermalink() : String
+    }
+
+    class AttributeDefinition {
+        + Integer id
+        + Integer category_id
+        + String key_name
+        + String data_type
+        + Boolean is_required
+    }
+
+    class PostAttribute {
+        + Long posting_id
+        + Integer attribute_id
+        + String value
+    }
+
+    class Media {
+        + Long id
+        + Long posting_id
+        + String url
+        + Integer display_order
+        + Boolean is_primary
+    }
+
+    Region "1" -- "0..*" SubRegion : contains
+    Section "1" -- "1..*" Category : defines
+    Region "1" -- "0..*" Posting : hosts
+    SubRegion "0..1" -- "0..*" Posting : pinpoints
+    Category "1" -- "0..*" Posting : classifies
+    Category "1" -- "0..*" AttributeDefinition : specifies
+    Posting "1" -- "0..*" PostAttribute : holds
+    Posting "1" -- "0..*" Media : attaches
+    AttributeDefinition "1" -- "0..*" PostAttribute : defines_value
+}
+@enduml

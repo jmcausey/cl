@@ -11,49 +11,54 @@ CATEGORY_LABELS = {
     "sss": "For Sale — All",
     "ata": "Antiques",
     "ppa": "Appliances",
-    "art": "Arts + Crafts",
+    "ara": "Arts + Crafts",
     "sna": "ATV / UTV / Sno",
-    "aut": "Auto Parts",
+    "pta": "Auto Parts",
     "ava": "Aviation",
-    "bab": "Baby + Kids",
+    "baa": "Baby + Kids",
     "bar": "Barter",
-    "bip": "Bikes",
-    "boa": "Boats",
+    "haa": "Beauty + Health",
+    "bia": "Bikes",
+    "bikeparts": "Bike Parts",
+    "boo": "Boats",
     "bpa": "Boat Parts",
-    "bks": "Books",
-    "bfs": "Business",
-    "car": "Cars + Trucks",
-    "clo": "Clothing + Accessories",
-    "clt": "Collectibles",
-    "cps": "Computer Parts",
-    "sys": "Computers",
-    "ele": "Electronics",
-    "ela": "Farm + Garden",
+    "bka": "Books",
+    "bfa": "Business",
+    "ema": "CDs / DVD / VHS",
+    "moa": "Cell Phones",
+    "cta": "Cars + Trucks",
+    "cla": "Clothing + Accessories",
+    "cba": "Collectibles",
+    "syp": "Computer Parts",
+    "sya": "Computers",
+    "electronics": "Electronics",
+    "gra": "Farm + Garden",
     "zip": "Free",
-    "fuo": "Furniture",
+    "fua": "Furniture",
     "gms": "Garage Sale",
-    "for": "General",
-    "hvo": "Heavy Equipment",
-    "hsh": "Household",
-    "jwl": "Jewelry",
-    "mat": "Materials",
+    "foa": "General",
+    "hva": "Heavy Equipment",
+    "hsa": "Household",
+    "jwa": "Jewelry",
+    "maa": "Materials",
     "mpa": "Motorcycle Parts",
-    "mcy": "Motorcycles",
-    "msg": "Music Instruments",
-    "pho": "Photo + Video",
-    "rvs": "RVs + Camp",
-    "spo": "Sporting",
+    "mca": "Motorcycles",
+    "msa": "Music Instruments",
+    "pha": "Photo + Video",
+    "rva": "RVs + Camp",
+    "sga": "Sporting",
     "tia": "Tickets",
-    "tls": "Tools",
-    "tag": "Toys + Games",
+    "tla": "Tools",
+    "taa": "Toys + Games",
     "tra": "Trailers",
     "vga": "Video Gaming",
-    "wto": "Wanted",
+    "waa": "Wanted",
     "wta": "Wheels + Tires",
-    "services": "Services",
-    "jobs": "Jobs",
-    "housing": "Housing",
-    "gigs": "Gigs",
+    "autos": "All Autos",
+    "bbb": "Services",
+    "jjj": "Jobs",
+    "hhh": "Housing",
+    "ggg": "Gigs",
     "res": "Resumes",
     "ccc": "Community — All",
     "act": "Community — Activities",
@@ -62,9 +67,10 @@ CATEGORY_LABELS = {
     "cls": "Community — Classes",
     "eve": "Community — Events",
     "grp": "Community — Groups",
-    "lnw": "Community — Local News",
+    "vnn": "Community — Local News and Views",
+    "laf": "Community — Lost & Found",
+    "mis": "Community — Missed Connections",
     "vol": "Community — Volunteers",
-    "community": "Community — All",
     "pet": "Community — Pets",
     "pol": "Community — Politics",
     "com": "Community — General",
@@ -73,6 +79,47 @@ CATEGORY_LABELS = {
     "muc": "Community — Musicians",
     "rid": "Community — Rideshare",
     "rnr": "Community — Rants & Raves",
+}
+
+CATEGORY_ALIASES = {
+    "car": "cta",
+    "art": "ara",
+    "aut": "pta",
+    "bab": "baa",
+    "bip": "bia",
+    "boa": "boo",
+    "bks": "bka",
+    "bfs": "bfa",
+    "clo": "cla",
+    "clt": "cba",
+    "cps": "syp",
+    "sys": "sya",
+    "ele": "ela",
+    "ela": "gra",
+    "fuo": "fua",
+    "for": "foa",
+    "hvo": "hva",
+    "hsh": "hsa",
+    "jwl": "jwa",
+    "mat": "maa",
+    "mcy": "mca",
+    "msg": "msa",
+    "pho": "pha",
+    "rvs": "rva",
+    "spo": "sga",
+    "tls": "tla",
+    "tag": "taa",
+    "wto": "waa",
+    "lnw": "vnn",
+    "lnf": "laf",
+    "msc": "mis",
+    "services": "bbb",
+    "jobs": "jjj",
+    "housing": "hhh",
+    "gigs": "ggg",
+    "autos": "aut",
+    "bikeparts": "bip",
+    "electronics": "ela",
 }
 
 
@@ -86,6 +133,8 @@ def normalize_category(category):
         return "sss"
 
     lowered = value.lower()
+    if lowered in CATEGORY_ALIASES:
+        return CATEGORY_ALIASES[lowered]
     if lowered == "community":
         return "ccc"
     if lowered in CATEGORY_LABELS:
@@ -93,7 +142,8 @@ def normalize_category(category):
 
     label_map = {label.lower(): code for code, label in CATEGORY_LABELS.items()}
     if lowered in label_map:
-        return label_map[lowered]
+        code = label_map[lowered]
+        return CATEGORY_ALIASES.get(code, code)
 
     if re.fullmatch(r"[A-Za-z0-9_-]+", value):
         return value
@@ -850,29 +900,41 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
     return listings
 
 
-def store_listing(listing, db):
+def store_listing(listing, db, post_to_blog=True):
+    status = "published" if post_to_blog else "unpublished"
+    if post_to_blog:
+        db.execute(
+            "UPDATE craigslist_postings SET status='published' "
+            "WHERE craigslist_id=? AND status='unpublished'",
+            (listing["craigslist_id"],),
+        )
     cursor = db.execute(
         """INSERT INTO craigslist_postings
            (craigslist_id,title,price_text,price_amount,location,
-            listing_url,category,search_query,posted_at,image_url,description)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            listing_url,category,search_query,posted_at,image_url,description,status)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT (craigslist_id) DO NOTHING""",
         (listing["craigslist_id"], listing["title"], listing.get("price_text"),
          listing.get("price_amount"), listing.get("location"),
          listing["listing_url"], listing.get("category"),
          listing.get("search_query"), listing.get("posted_at"), listing.get("image_url"),
-         listing.get("description")),
+         listing.get("description"), status),
     )
     return cursor.rowcount == 1
 
-def run_scraper(query="surfboard", max_results=5, **kwargs):
+def run_scraper(query="surfboard", max_results=5, post_to_blog=True, **kwargs):
     from . import create_app, get_db
     app = create_app()
     with app.app_context():
         db = get_db()
-        known = {r["craigslist_id"] for r in db.execute("SELECT craigslist_id FROM craigslist_postings")}
+        known = {
+            row["craigslist_id"]
+            for row in db.execute(
+                "SELECT craigslist_id FROM craigslist_postings WHERE status != 'unpublished'"
+            )
+        }
         listings = get_craigslist_listings(query=query, max_results=max_results, known_listing_ids=known, **kwargs)
-        inserted = sum(store_listing(item, db) for item in listings)
+        inserted = sum(store_listing(item, db, post_to_blog=post_to_blog) for item in listings)
         db.commit()
 
         enriched = enrich_missing_images(db)

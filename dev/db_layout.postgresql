@@ -1,0 +1,140 @@
+-- Enable UUID extension for secure external identifiers
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ==========================================
+-- 1. GEOGRAPHIC & ROUTING TABLES
+-- ==========================================
+
+CREATE TABLE regions (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    subdomain VARCHAR(63) NOT NULL UNIQUE, -- e.g., 'sfbay', 'london'
+    country_code VARCHAR(2) NOT NULL,       -- ISO 3166-1 alpha-2
+    timezone VARCHAR(50) NOT NULL DEFAULT 'UTC',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE subregions (
+    id SERIAL PRIMARY KEY,
+    region_id INT NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(20) NOT NULL,              -- e.g., 'sfc', 'ebx'
+    CONSTRAINT uq_region_subregion UNIQUE (region_id, code)
+);
+
+-- ==========================================
+-- 2. CATEGORY TAXONOMY TABLES
+-- ==========================================
+
+CREATE TABLE sections (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    route_prefix VARCHAR(10) NOT NULL UNIQUE -- e.g., 'sss', 'hhh', 'jjj'
+);
+
+CREATE TABLE categories (
+    id SERIAL PRIMARY KEY,
+    section_id INT NOT NULL REFERENCES sections(id) ON DELETE RESTRICT,
+    name VARCHAR(100) NOT NULL,
+    short_code VARCHAR(10) NOT NULL,          -- e.g., 'apa', 'cta', 'sop'
+    allows_images BOOLEAN NOT NULL DEFAULT TRUE,
+    requires_price BOOLEAN NOT NULL DEFAULT FALSE,
+    CONSTRAINT uq_section_shortcode UNIQUE (section_id, short_code)
+);
+
+-- Defines dynamic metadata fields per category (e.g., bedrooms, VIN, salary)
+CREATE TABLE attribute_definitions (
+    id SERIAL PRIMARY KEY,
+    category_id INT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    key_name VARCHAR(50) NOT NULL,             -- e.g., 'sqft', 'odometer', 'job_type'
+    data_type VARCHAR(20) NOT NULL,            -- e.g., 'integer', 'string', 'boolean', 'numeric'
+    is_required BOOLEAN NOT NULL DEFAULT FALSE,
+    CONSTRAINT uq_category_key UNIQUE (category_id, key_name)
+);
+
+-- ==========================================
+-- 3. CORE POSTINGS TABLE
+-- ==========================================
+
+CREATE TYPE posting_status AS ENUM ('draft', 'active', 'flagged', 'expired', 'deleted');
+
+CREATE TABLE postings (
+    id BIGSERIAL PRIMARY KEY,
+    uuid UUID NOT NULL DEFAULT uuid_generate_v4() UNIQUE,
+    region_id INT NOT NULL REFERENCES regions(id) ON DELETE RESTRICT,
+    subregion_id INT REFERENCES subregions(id) ON DELETE SET NULL,
+    category_id INT NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+    
+    title VARCHAR(255) NOT NULL,
+    body TEXT NOT NULL,
+    price NUMERIC(12, 2),                      -- Nullable for categories that don't require price
+    postal_code VARCHAR(20),
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    
+    status posting_status NOT NULL DEFAULT 'active',
+    
+    -- Hybrid attribute storage: JSONB for fast indexing/queries + optional EAV normalization
+    attributes JSONB NOT NULL DEFAULT '{}'::jsonb,
+    
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Normalized EAV table (optional alternative to JSONB for strict relational mapping)
+CREATE TABLE post_attributes (
+    posting_id BIGINT NOT NULL REFERENCES postings(id) ON DELETE CASCADE,
+    attribute_id INT NOT NULL REFERENCES attribute_definitions(id) ON DELETE CASCADE,
+    value TEXT NOT NULL,
+    PRIMARY KEY (posting_id, attribute_id)
+);
+
+-- ==========================================
+-- 4. MEDIA ATTACHMENTS
+-- ==========================================
+
+CREATE TABLE media (
+    id BIGSERIAL PRIMARY KEY,
+    posting_id BIGINT NOT NULL REFERENCES postings(id) ON DELETE CASCADE,
+    url TEXT NOT NULL,
+    display_order INT NOT NULL DEFAULT 0,
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ==========================================
+-- 5. INDEXES FOR URL RESOLUTION & SEARCH
+-- ==========================================
+
+-- O(1) Fast Subdomain & Route Resolution
+CREATE INDEX idx_regions_subdomain ON regions(subdomain);
+CREATE INDEX idx_categories_short_code ON categories(short_code);
+
+-- Feed & Search Performance Indexes
+CREATE INDEX idx_postings_feed ON postings(region_id, category_id, status, created_at DESC);
+CREATE INDEX idx_postings_subregion ON postings(subregion_id) WHERE subregion_id IS NOT NULL;
+CREATE INDEX idx_postings_geo ON postings(latitude, longitude) WHERE latitude IS NOT NULL AND longitude IS NOT NULL;
+
+-- JSONB Generalized Inverted Index (GIN) for dynamic attribute filtering
+CREATE INDEX idx_postings_attributes_gin ON postings USING GIN (attributes);
+
+-- Full-text search index on title and body
+CREATE INDEX idx_postings_fts ON postings USING GIN (to_tsvector('english', title || ' ' || body));
+
+-- ==========================================
+-- 6. TRIGGERS
+-- ==========================================
+
+-- Automatically update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_postings_updated_at
+    BEFORE UPDATE ON postings
+    FOR EACH ROW
+    EXECUTE FUNCTION update_timestamp();

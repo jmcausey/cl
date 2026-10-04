@@ -9,24 +9,49 @@
 <label>Category<br>
 <select name="category" id="category" required>
   <optgroup label="For Sale">
-    <option value="sss">All</option><option value="ata">Antiques</option><option value="ppa">Appliances</option><option value="art">Arts + Crafts</option><option value="sna">ATV / UTV / Sno</option><option value="aut">Auto Parts</option><option value="ava">Aviation</option><option value="bab">Baby + Kids</option><option value="bar">Barter</option><option value="bip">Bikes</option><option value="boa">Boats</option><option value="bpa">Boat Parts</option><option value="bks">Books</option><option value="bfs">Business</option><option value="car">Cars + Trucks</option><option value="clo">Clothing + Accessories</option><option value="clt">Collectibles</option><option value="cps">Computer Parts</option><option value="sys">Computers</option><option value="ele">Electronics</option><option value="ela">Farm + Garden</option><option value="zip">Free</option><option value="fuo">Furniture</option><option value="gms">Garage Sale</option><option value="for">General</option><option value="hvo">Heavy Equipment</option><option value="hsh">Household</option><option value="jwl">Jewelry</option><option value="mat">Materials</option><option value="mpa">Motorcycle Parts</option><option value="mcy">Motorcycles</option><option value="msg">Music Instruments</option><option value="pho">Photo + Video</option><option value="rvs">RVs + Camp</option><option value="spo">Sporting</option><option value="tia">Tickets</option><option value="tls">Tools</option><option value="tag">Toys + Games</option><option value="tra">Trailers</option><option value="vga">Video Gaming</option><option value="wto">Wanted</option><option value="wta">Wheels + Tires</option>
+    <option value="sss">All</option>
+    <option value="ata">Antiques</option><option value="ppa">Appliances</option><option value="ara">Arts + Crafts</option>
+    <option value="baa">Baby + Kids</option><option value="bar">Barter</option><option value="haa">Beauty + Health</option>
+    <option value="bikeparts">Bike Parts</option><option value="bia">Bikes</option><option value="bka">Books</option>
+    <option value="bfa">Business</option><option value="ema">CDs / DVD / VHS</option><option value="moa">Cell Phones</option>
+    <option value="cla">Clothing + Accessories</option><option value="cba">Collectibles</option>
+    <option value="syp">Computer Parts</option><option value="sya">Computers</option><option value="electronics">Electronics</option>
+    <option value="gra">Farm + Garden</option><option value="zip">Free</option><option value="fua">Furniture</option>
+    <option value="gms">Garage Sale</option><option value="foa">General</option><option value="hsa">Household</option>
+    <option value="jwa">Jewelry</option><option value="maa">Materials</option><option value="msa">Music Instruments</option>
+    <option value="pha">Photo + Video</option><option value="sga">Sporting</option><option value="tia">Tickets</option>
+    <option value="tla">Tools</option><option value="taa">Toys + Games</option><option value="vga">Video Gaming</option>
+    <option value="waa">Wanted</option>
+  </optgroup>
+  <optgroup label="Autos">
+    <option value="autos">All Autos</option><option value="sna">ATV / UTV / Sno</option><option value="pta">Auto Parts</option>
+    <option value="wta">Auto Wheels + Tires</option><option value="ava">Aviation</option><option value="bpa">Boat Parts</option>
+    <option value="boo">Boats</option><option value="cta">Cars + Trucks</option><option value="hva">Heavy Equipment</option>
+    <option value="mpa">Motorcycle Parts</option><option value="mca">Motorcycles</option><option value="rva">RVs</option>
+    <option value="tra">Trailers</option>
   </optgroup>
   <optgroup label="Community">
-    <option value="ccc">All Community</option><option value="act">Activities</option><option value="ats">Artists</option><option value="kid">Childcare</option><option value="cls">Classes</option><option value="eve">Events</option><option value="grp">Groups</option><option value="com">General</option><option value="lnw">Local News</option><option value="lnf">Lost &amp; Found</option><option value="msc">Missed Connections</option><option value="muc">Musicians</option><option value="pet">Pets</option><option value="pol">Politics</option><option value="rid">Rideshare</option><option value="rnr">Rants &amp; Raves</option><option value="vol">Volunteers</option>
+    <option value="ccc">All Community</option><option value="act">Activities</option><option value="ats">Artists</option>
+    <option value="kid">Childcare</option><option value="cls">Classes</option><option value="eve">Events</option>
+    <option value="grp">Groups</option><option value="com">General</option><option value="vnn">Local News and Views</option>
+    <option value="laf">Lost &amp; Found</option><option value="mis">Missed Connections</option><option value="muc">Musicians</option>
+    <option value="pet">Pets</option><option value="pol">Politics</option><option value="rid">Rideshare</option>
+    <option value="rnr">Rants &amp; Raves</option><option value="vol">Volunteers</option>
   </optgroup>
   <optgroup label="Other">
-    <option value="services">Services</option><option value="jobs">Jobs</option><option value="housing">Housing</option><option value="gigs">Gigs</option><option value="res">Resumes</option>
+    <option value="bbb">Services</option><option value="jjj">Jobs</option><option value="hhh">Housing</option>
+    <option value="ggg">Gigs</option><option value="res">Resumes</option>
   </optgroup>
 </select></label>
 <label>Radius (miles)<br><input name="radius" type="number" min="0" max="500" value="0"></label>
 <label>Run times<br><input name="run_times" value="06:00" placeholder="06:00,18:00"></label>
-</div><p><label><input type="checkbox" name="enabled" checked> Enabled</label></p><button>Save Search</button></form>
+</div><p><label><input type="checkbox" name="enabled" checked> Enabled</label></p><p><label><input type="checkbox" name="post_to_blog" checked> Post scraped listings to blog</label></p><button>Save Search</button></form>
 <h2>Configured Searches</h2>
-<table><tr><th>Name</th><th>Location</th><th>Search</th><th>Schedule</th><th>Status</th><th>Actions</th></tr>
-{% for job in jobs %}<tr><td>{{ job.name }}</td><td>{{ job.location }}</td><td>{{ job.term }} / {{ job.category }}</td><td>{{ job.run_times or "Manual only" }}</td><td>{{ job.last_status or "Never run" }}{% if job.last_run_at %}<br><small>{{ job.last_run_at }}</small>{% endif %}</td><td>
+<table><tr><th>Name</th><th>Location</th><th>Search</th><th>Schedule</th><th>Post to blog</th><th>Status</th><th>Actions</th></tr>
+{% for job in jobs %}<tr><td>{{ job.name }}</td><td>{{ job.location }}</td><td>{{ job.term }} / {{ job.category }}</td><td>{{ job.run_times or "Manual only" }}</td><td>{{ "Yes" if job.post_to_blog else "No" }}</td><td>{{ job.last_status or "Never run" }}{% if job.last_run_at %}<br><small>{{ job.last_run_at }}</small>{% endif %}</td><td>
 <form class="inline" method="post"><input type="hidden" name="action" value="run"><input type="hidden" name="job_id" value="{{ job.id }}"><button>Run Now</button></form>
 <form class="inline" method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="job_id" value="{{ job.id }}"><button>Delete</button></form>
-</td></tr>{% else %}<tr><td colspan="6">No searches configured.</td></tr>{% endfor %}</table>
+</td></tr>{% else %}<tr><td colspan="7">No searches configured.</td></tr>{% endfor %}</table>
 <script>
 (() => {
   const countrySelect = document.getElementById("location-country");

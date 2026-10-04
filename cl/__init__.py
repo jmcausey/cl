@@ -55,8 +55,18 @@ def init_db():
     schema = (Path(current_app.root_path).parent / schema_name).read_text()
     if _is_postgres():
         db.execute(schema)
+        db.execute(
+            "ALTER TABLE craigslist_jobs "
+            "ADD COLUMN IF NOT EXISTS post_to_blog BOOLEAN NOT NULL DEFAULT TRUE"
+        )
     else:
         db.executescript(schema)
+        columns = db.execute("PRAGMA table_info(craigslist_jobs)").fetchall()
+        if not any(column["name"] == "post_to_blog" for column in columns):
+            db.execute(
+                "ALTER TABLE craigslist_jobs "
+                "ADD COLUMN post_to_blog INTEGER NOT NULL DEFAULT 1"
+            )
     db.commit()
 
 

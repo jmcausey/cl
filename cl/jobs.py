@@ -7,7 +7,8 @@ def execute_job(job):
     )
     return run_scraper(
         query=job["term"], max_results=None, search_url=search_url,
-        category=job["category"], radius=job["radius"]
+        category=job["category"], radius=job["radius"],
+        post_to_blog=job.get("post_to_blog", True)
     )
 
 def run_job_by_id(db, job_id):

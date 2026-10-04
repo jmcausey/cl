@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS craigslist_jobs (
     radius INTEGER NOT NULL DEFAULT 0,
     run_times TEXT NOT NULL DEFAULT '06:00',
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    post_to_blog BOOLEAN NOT NULL DEFAULT TRUE,
     last_run_at TIMESTAMP,
     last_status TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
