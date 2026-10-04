@@ -323,15 +323,30 @@ def _resolve_city_state_site(location):
             return f"https://{hostname}"
 
         # Craigslist may render the city routing page without redirecting.
-        # In that case, extract the regional site's link from the page.
+        # Prefer its canonical/og URL because the page also contains links to
+        # post.craigslist.org and accounts.craigslist.org.
         soup = BeautifulSoup(response.text, "html.parser")
+        for selector in ('link[rel="canonical"]', 'meta[property="og:url"]'):
+            element = soup.select_one(selector)
+            href = (element.get("href") or element.get("content")) if element else ""
+            link_host = (urlparse(href).hostname or "").lower()
+            if link_host.endswith(".craigslist.org") and link_host not in {
+                "www.craigslist.org", "craigslist.org",
+                "post.craigslist.org", "accounts.craigslist.org",
+            }:
+                return f"https://{link_host}"
+
+        # As a fallback, only accept links that look like actual regional
+        # Craigslist sites, never posting/account/forum/geo hosts.
+        blocked_hosts = {
+            "www.craigslist.org", "craigslist.org", "post.craigslist.org",
+            "accounts.craigslist.org", "forums.craigslist.org", "geo.craigslist.org",
+        }
         regional_links = []
         for link in soup.select("a[href]"):
             href = urljoin(response.url, link.get("href", ""))
             link_host = (urlparse(href).hostname or "").lower()
-            if not link_host.endswith(".craigslist.org"):
-                continue
-            if link_host in {"www.craigslist.org", "craigslist.org"}:
+            if not link_host.endswith(".craigslist.org") or link_host in blocked_hosts:
                 continue
             regional_links.append(f"https://{link_host}")
 
