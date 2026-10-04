@@ -148,10 +148,15 @@ def _craigslist_sites():
 
     print(f"Craigslist result rows found: {len(rows)}")
     sites = []
-    context = ""
-    for element in soup.find_all(["h2", "h3", "a"]):
-        if element.name in ("h2", "h3"):
-            context = element.get_text(" ", strip=True)
+    region = ""
+    subdivision = ""
+    for element in soup.find_all(["h2", "h3", "h4", "a"]):
+        if element.name == "h2":
+            region = element.get_text(" ", strip=True)
+            subdivision = ""
+            continue
+        if element.name in {"h3", "h4"}:
+            subdivision = element.get_text(" ", strip=True)
             continue
         href = element.get("href")
         name = element.get_text(" ", strip=True)
@@ -159,10 +164,57 @@ def _craigslist_sites():
             continue
         # The sites directory uses relative /area/<site> links.
         absolute_href = urljoin(CRAILSITES_URL, href)
-        if "craigslist.org" not in absolute_href:
+        parsed_href = urlparse(absolute_href)
+        if (
+            parsed_href.hostname not in {"www.craigslist.org", "craigslist.org"}
+            or not re.fullmatch(r"/area/[^/]+", parsed_href.path.rstrip("/"))
+        ):
             continue
-        sites.append({"name": name, "url": _normalize_site_url(absolute_href), "context": context})
+        country = (
+            {"us": "United States", "canada": "Canada"}.get(region.lower())
+            or subdivision
+            or region
+        )
+        state = subdivision if region.lower() in {"us", "canada"} else ""
+        sites.append({
+            "name": name,
+            "url": _normalize_site_url(absolute_href),
+            "context": subdivision,
+            "country": country,
+            "state": state,
+        })
     return sites
+
+
+def craigslist_locations():
+    """Return the Craigslist directory grouped for cascading location selectors."""
+    try:
+        sites = _craigslist_sites()
+    except requests.RequestException as exc:
+        raise ValueError(f"Could not load Craigslist site directory: {exc}") from exc
+
+    countries = {}
+    for site in sites:
+        country = site.get("country") or "Other"
+        state = site.get("state") or ""
+        countries.setdefault(country, {}).setdefault(state, []).append({
+            "name": site["name"],
+            "url": site["url"],
+        })
+
+    return [
+        {
+            "name": country,
+            "states": [
+                {
+                    "name": state,
+                    "cities": sorted(cities, key=lambda city: city["name"].lower()),
+                }
+                for state, cities in sorted(states.items(), key=lambda item: item[0].lower())
+            ],
+        }
+        for country, states in sorted(countries.items(), key=lambda item: item[0].lower())
+    ]
 
 # Craigslist city/state routing overrides for places that belong to a
 # regional site rather than having their own Craigslist hostname.
@@ -386,11 +438,22 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
 
     raw_location = str(location).strip()
     parts = [part.strip() for part in raw_location.split(",") if part.strip()]
+    parsed_location = urlparse(raw_location)
+    hostname = (parsed_location.hostname or "").lower()
+    selected_site_url = None
+    if parsed_location.scheme or parsed_location.netloc:
+        if (
+            parsed_location.scheme not in {"http", "https"}
+            or not hostname.endswith(".craigslist.org")
+            or hostname in {"www.craigslist.org", "craigslist.org"}
+        ):
+            raise ValueError("Location URL must be a Craigslist regional site.")
+        selected_site_url = f"https://{hostname}"
 
     # Craigslist's regional city URLs are the most reliable form for
     # city/state searches. For example, Athens, TX is served by East Texas
     # at /search/athens-tx/pet rather than the old /search/area/ URL form.
-    if len(parts) >= 2:
+    if selected_site_url is None and len(parts) >= 2:
         city = re.sub(r"[^a-z0-9]+", "-", parts[0].lower()).strip("-")
         state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
         if city and state:
@@ -403,18 +466,7 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
                 f"?{query_string}" if query_string else ""
             )
 
-    site_url = resolve_craigslist_site(location)
-    if category in {
-        "ccc", "act", "ats", "kid", "cls", "eve", "grp", "com", "lnw",
-        "lnf", "msc", "muc", "pet", "pol", "rid", "rnr", "vol"
-    }:
-        params["cat"] = category
-        query_string = urlencode(params)
-        site_name = urlparse(site_url).hostname.split(".")[0]
-        return f"{site_url}/search/area/{site_name}" + (
-            f"?{query_string}" if query_string else ""
-        )
-
+    site_url = selected_site_url or resolve_craigslist_site(location)
     query_string = urlencode(params)
     return f"{site_url}/search/{category}" + (f"?{query_string}" if query_string else "")
 

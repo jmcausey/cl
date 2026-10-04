@@ -2,13 +2,22 @@ from datetime import datetime
 import subprocess
 import sys
 from pathlib import Path
-from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from . import get_db
 from .jobs import execute_job
+from .scraper import craigslist_locations
 
 bp = Blueprint("cl", __name__)
 
 BLOG_STATUSES = ("pending", "completed")
+
+
+@bp.route("/api/locations")
+def api_locations():
+    try:
+        return jsonify(craigslist_locations())
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 503
 
 
 def normalize_blog_status(status):

@@ -1,8 +1,10 @@
-{% extends "base.html" %}{% block title %}Control Panel — CL{% endblock %}{% block content %}
+{% extends "base.html" %}{% block title %}Control Panel — CL{% endblock %}{% block body_class %}control-panel-page{% endblock %}{% block content %}
 <h1>Craigslist Search Control Panel</h1>
 <form method="post" class="card"><div class="grid">
 <label>Name<br><input name="name" required placeholder="Used boats"></label>
-<label>Location<br><input name="location" required placeholder="Austin, TX or Paris"></label>
+<label>Country<br><select id="location-country" required disabled><option value="">Loading locations...</option></select></label>
+<label>State / Province<br><select id="location-state" disabled><option value="">Choose a country first</option></select></label>
+<label>City / Region<br><select name="location" id="location-city" required disabled><option value="">Choose a state or province first</option></select></label>
 <label>Search term<br><input name="term" required placeholder="boat"></label>
 <label>Category<br>
 <select name="category" id="category" required>
@@ -24,4 +26,69 @@
 {% for job in jobs %}<tr><td>{{ job.name }}</td><td>{{ job.location }}</td><td>{{ job.term }} / {{ job.category }}</td><td>{{ job.run_times or "Manual only" }}</td><td>{{ job.last_status or "Never run" }}{% if job.last_run_at %}<br><small>{{ job.last_run_at }}</small>{% endif %}</td><td>
 <form class="inline" method="post"><input type="hidden" name="action" value="run"><input type="hidden" name="job_id" value="{{ job.id }}"><button>Run Now</button></form>
 <form class="inline" method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="job_id" value="{{ job.id }}"><button>Delete</button></form>
-</td></tr>{% else %}<tr><td colspan="6">No searches configured.</td></tr>{% endfor %}</table>{% endblock %}
+</td></tr>{% else %}<tr><td colspan="6">No searches configured.</td></tr>{% endfor %}</table>
+<script>
+(() => {
+  const countrySelect = document.getElementById("location-country");
+  const stateSelect = document.getElementById("location-state");
+  const citySelect = document.getElementById("location-city");
+  let locations = [];
+
+  const reset = (select, label) => {
+    select.replaceChildren(new Option(label, ""));
+  };
+
+  countrySelect.addEventListener("change", () => {
+    reset(stateSelect, "Choose a state or province");
+    reset(citySelect, "Choose a city or region");
+    citySelect.disabled = true;
+    const country = locations.find((item) => item.name === countrySelect.value);
+    if (!country) {
+      stateSelect.disabled = true;
+      return;
+    }
+    for (const state of country.states) {
+      stateSelect.add(new Option(state.name || "All regions", state.name || "__all__"));
+    }
+    stateSelect.disabled = false;
+    if (country.states.length === 1 && !country.states[0].name) {
+      stateSelect.value = "__all__";
+      stateSelect.dispatchEvent(new Event("change"));
+    }
+  });
+
+  stateSelect.addEventListener("change", () => {
+    reset(citySelect, "Choose a city or region");
+    const country = locations.find((item) => item.name === countrySelect.value);
+    const state = country?.states.find(
+      (item) => (item.name || "__all__") === stateSelect.value
+    );
+    if (!state) {
+      citySelect.disabled = true;
+      return;
+    }
+    for (const city of state.cities) {
+      citySelect.add(new Option(city.name, city.url));
+    }
+    citySelect.disabled = false;
+  });
+
+  fetch("{{ url_for('cl.api_locations') }}")
+    .then((response) => {
+      if (!response.ok) throw new Error("Location directory unavailable");
+      return response.json();
+    })
+    .then((data) => {
+      locations = data;
+      reset(countrySelect, "Choose a country");
+      for (const country of locations) {
+        countrySelect.add(new Option(country.name, country.name));
+      }
+      countrySelect.disabled = false;
+    })
+    .catch(() => {
+      reset(countrySelect, "Could not load locations");
+    });
+})();
+</script>
+{% endblock %}
