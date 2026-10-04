@@ -54,7 +54,16 @@ CATEGORY_LABELS = {
     "housing": "Housing",
     "gigs": "Gigs",
     "res": "Resumes",
-    "community": "Community",
+    "ccc": "Community — All",
+    "community": "Community — All",
+    "pet": "Community — Pets",
+    "pol": "Community — Politics",
+    "com": "Community — General",
+    "lnf": "Community — Lost & Found",
+    "msc": "Community — Missed Connections",
+    "muc": "Community — Musicians",
+    "rid": "Community — Rideshare",
+    "rnr": "Community — Rants & Raves",
 }
 
 
@@ -68,6 +77,8 @@ def normalize_category(category):
         return "sss"
 
     lowered = value.lower()
+    if lowered == "community":
+        return "ccc"
     if lowered in CATEGORY_LABELS:
         return lowered
 
