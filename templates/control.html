@@ -5,32 +5,16 @@
 <label>Location<br><input name="location" required placeholder="Austin, TX or Paris"></label>
 <label>Search term<br><input name="term" required placeholder="boat"></label>
 <label>Category<br>
-<select name="category" required>
-  <option value="sss">For Sale — All</option>
-  <option value="ata">Antiques</option><option value="ppa">Appliances</option>
-  <option value="art">Arts + Crafts</option><option value="sna">ATV / UTV / Sno</option>
-  <option value="aut">Auto Parts</option><option value="ava">Aviation</option>
-  <option value="bab">Baby + Kids</option><option value="bar">Barter</option>
-  <option value="bip">Bikes</option><option value="boa">Boats</option>
-  <option value="bpa">Boat Parts</option><option value="bks">Books</option>
-  <option value="bfs">Business</option><option value="car">Cars + Trucks</option>
-  <option value="clo">Clothing + Accessories</option><option value="clt">Collectibles</option>
-  <option value="cps">Computer Parts</option><option value="sys">Computers</option>
-  <option value="ele">Electronics</option><option value="ela">Farm + Garden</option>
-  <option value="zip">Free</option><option value="fuo">Furniture</option>
-  <option value="gms">Garage Sale</option><option value="for">General</option>
-  <option value="hvo">Heavy Equipment</option><option value="hsh">Household</option>
-  <option value="jwl">Jewelry</option><option value="mat">Materials</option>
-  <option value="mpa">Motorcycle Parts</option><option value="mcy">Motorcycles</option>
-  <option value="msg">Music Instruments</option><option value="pho">Photo + Video</option>
-  <option value="rvs">RVs + Camp</option><option value="spo">Sporting</option>
-  <option value="tia">Tickets</option><option value="tls">Tools</option>
-  <option value="tag">Toys + Games</option><option value="tra">Trailers</option>
-  <option value="vga">Video Gaming</option><option value="wto">Wanted</option>
-  <option value="wta">Wheels + Tires</option>
-  <option value="services">Services</option><option value="jobs">Jobs</option>
-  <option value="housing">Housing</option><option value="gigs">Gigs</option>
-  <option value="res">Resumes</option><option value="community">Community</option>
+<select name="category" id="category" required>
+  <optgroup label="For Sale">
+    <option value="sss">All</option><option value="ata">Antiques</option><option value="ppa">Appliances</option><option value="art">Arts + Crafts</option><option value="sna">ATV / UTV / Sno</option><option value="aut">Auto Parts</option><option value="ava">Aviation</option><option value="bab">Baby + Kids</option><option value="bar">Barter</option><option value="bip">Bikes</option><option value="boa">Boats</option><option value="bpa">Boat Parts</option><option value="bks">Books</option><option value="bfs">Business</option><option value="car">Cars + Trucks</option><option value="clo">Clothing + Accessories</option><option value="clt">Collectibles</option><option value="cps">Computer Parts</option><option value="sys">Computers</option><option value="ele">Electronics</option><option value="ela">Farm + Garden</option><option value="zip">Free</option><option value="fuo">Furniture</option><option value="gms">Garage Sale</option><option value="for">General</option><option value="hvo">Heavy Equipment</option><option value="hsh">Household</option><option value="jwl">Jewelry</option><option value="mat">Materials</option><option value="mpa">Motorcycle Parts</option><option value="mcy">Motorcycles</option><option value="msg">Music Instruments</option><option value="pho">Photo + Video</option><option value="rvs">RVs + Camp</option><option value="spo">Sporting</option><option value="tia">Tickets</option><option value="tls">Tools</option><option value="tag">Toys + Games</option><option value="tra">Trailers</option><option value="vga">Video Gaming</option><option value="wto">Wanted</option><option value="wta">Wheels + Tires</option>
+  </optgroup>
+  <optgroup label="Community">
+    <option value="ccc">All Community</option><option value="pet">Pets</option><option value="pol">Politics</option><option value="com">General</option><option value="lnf">Lost &amp; Found</option><option value="msc">Missed Connections</option><option value="muc">Musicians</option><option value="rid">Rideshare</option><option value="rnr">Rants &amp; Raves</option>
+  </optgroup>
+  <optgroup label="Other">
+    <option value="services">Services</option><option value="jobs">Jobs</option><option value="housing">Housing</option><option value="gigs">Gigs</option><option value="res">Resumes</option>
+  </optgroup>
 </select></label>
 <label>Radius (miles)<br><input name="radius" type="number" min="0" max="500" value="0"></label>
 <label>Run times<br><input name="run_times" value="06:00" placeholder="06:00,18:00"></label>
