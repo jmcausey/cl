@@ -155,9 +155,13 @@ def _craigslist_sites():
             continue
         href = element.get("href")
         name = element.get_text(" ", strip=True)
-        if not href or not name or "craigslist.org" not in href:
+        if not href or not name:
             continue
-        sites.append({"name": name, "url": _normalize_site_url(href), "context": context})
+        # The sites directory uses relative /area/<site> links.
+        absolute_href = urljoin(CRAILSITES_URL, href)
+        if "craigslist.org" not in absolute_href:
+            continue
+        sites.append({"name": name, "url": _normalize_site_url(absolute_href), "context": context})
     return sites
 
 STATE_NAMES = {
@@ -318,12 +322,13 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
         city = re.sub(r"[^a-z0-9]+", "-", parts[0].lower()).strip("-")
         state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
         if city and state:
-            # Craigslist's public city endpoint accepts city-state slugs
-            # directly on www.craigslist.org, avoiding ambiguity between
-            # identically named cities such as Athens, TX and Athens, GA.
+            # Use the regional site plus its city slug. This avoids the
+            # bare www.craigslist.org geo-selection page, which does not
+            # expose search results to a normal requests client.
+            site_url = resolve_craigslist_site(location)
             params["cat"] = category
             query_string = urlencode(params)
-            return f"https://www.craigslist.org/search/city/{city}-{state}" + (
+            return f"{site_url}/search/{city}-{state}/{category}" + (
                 f"?{query_string}" if query_string else ""
             )
 
