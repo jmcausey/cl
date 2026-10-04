@@ -321,6 +321,22 @@ def _resolve_city_state_site(location):
             "www.craigslist.org", "craigslist.org"
         }:
             return f"https://{hostname}"
+
+        # Craigslist may render the city routing page without redirecting.
+        # In that case, extract the regional site's link from the page.
+        soup = BeautifulSoup(response.text, "html.parser")
+        regional_links = []
+        for link in soup.select("a[href]"):
+            href = urljoin(response.url, link.get("href", ""))
+            link_host = (urlparse(href).hostname or "").lower()
+            if not link_host.endswith(".craigslist.org"):
+                continue
+            if link_host in {"www.craigslist.org", "craigslist.org"}:
+                continue
+            regional_links.append(f"https://{link_host}")
+
+        if regional_links:
+            return regional_links[0]
     except requests.RequestException:
         pass
     return None
