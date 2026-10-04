@@ -55,6 +55,24 @@ PostgreSQL data is stored in the named Docker volume `cl_postgres_data`. Recreat
 docker compose down -v
 ```
 
+### Schema and upgrades
+
+`schema_postgres.sql` defines the PostgreSQL schema, including the normalized `regions`, `subregions`, `sections`, `categories`, `postings`, attributes, and media tables. `schema.sql` provides the SQLite equivalent, including JSON validation, FTS5 search indexing, and timestamp triggers. Search jobs, users, and authored blog posts remain as application tables.
+
+The web and scheduler services run `flask --app app init-db` at startup. Initialization is idempotent, seeds the category taxonomy, and migrates existing rows from `craigslist_postings` into `postings` and `media`. The legacy listings table is removed after the copy succeeds; jobs, users, and blog posts are retained.
+
+### Clear application data
+
+To remove postings, media, search jobs, users, and blog posts while keeping the schema and category taxonomy, stop the scheduler and run the guarded utility:
+
+```bash
+docker compose stop scheduler
+docker compose run --rm --no-deps web python tools/clear_database.py --confirm
+docker compose start scheduler
+```
+
+The utility requires `--confirm`; it permanently deletes application data. To remove the PostgreSQL database volume and all schema/data instead, use `docker compose down -v`.
+
 ### Environment variables
 
 See `.env.example`. Important values include `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `FLASK_SECRET_KEY`, `APP_PORT`, `POSTGRES_PORT`, and optional Google OAuth variables.
@@ -72,6 +90,7 @@ flask --app app run --port 5001
 ```
 
 Set `DATABASE_URL` to use PostgreSQL locally instead of SQLite.
+The same `flask --app app init-db` command initializes the selected backend and applies the legacy-listings migration.
 
 ## Scheduler
 
