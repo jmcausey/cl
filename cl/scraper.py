@@ -159,20 +159,62 @@ def _craigslist_sites():
         sites.append({"name": name, "url": _normalize_site_url(href), "context": context})
     return sites
 
+STATE_NAMES = {
+    "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas",
+    "ca": "california", "co": "colorado", "ct": "connecticut", "de": "delaware",
+    "fl": "florida", "ga": "georgia", "hi": "hawaii", "id": "idaho",
+    "il": "illinois", "in": "indiana", "ia": "iowa", "ks": "kansas",
+    "ky": "kentucky", "la": "louisiana", "me": "maine", "md": "maryland",
+    "ma": "massachusetts", "mi": "michigan", "mn": "minnesota", "ms": "mississippi",
+    "mo": "missouri", "mt": "montana", "ne": "nebraska", "nv": "nevada",
+    "nh": "new hampshire", "nj": "new jersey", "nm": "new mexico", "ny": "new york",
+    "nc": "north carolina", "nd": "north dakota", "oh": "ohio", "ok": "oklahoma",
+    "or": "oregon", "pa": "pennsylvania", "ri": "rhode island", "sc": "south carolina",
+    "sd": "south dakota", "tn": "tennessee", "tx": "texas", "ut": "utah",
+    "vt": "vermont", "va": "virginia", "wa": "washington", "wv": "west virginia",
+    "wi": "wisconsin", "wy": "wyoming", "dc": "district of columbia",
+}
+
+
 def _location_aliases(location):
     """Return useful search forms for city/state input."""
     raw = str(location).strip()
     normalized = _normalize_location(raw)
     forms = {normalized}
-    # "Dallas, TX" should match Craigslist's "Dallas / Fort Worth" region.
-    parts = [p for p in re.split(r"[,]+", raw) if p.strip()]
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
     if parts:
         forms.add(_normalize_location(parts[0]))
-    state = ""
     if len(parts) > 1:
         state = _normalize_location(parts[-1])
-        forms.add(f"{forms.copy().pop()} {state}" if state else normalized)
+        forms.add(f"{_normalize_location(parts[0])} {state}")
     return {x for x in forms if x}
+
+
+def _requested_state(location):
+    """Return normalized state forms when the user supplied a state."""
+    parts = [p.strip() for p in str(location).strip().split(",") if p.strip()]
+    if len(parts) < 2:
+        return set()
+    state = _normalize_location(parts[-1])
+    full_name = STATE_NAMES.get(state)
+    return {state, full_name} if full_name else {state}
+
+
+def _site_state_forms(site):
+    """Infer a site's state from its directory context and hostname."""
+    forms = set()
+    context = _normalize_location(site.get("context", ""))
+    if context:
+        for abbreviation, full_name in STATE_NAMES.items():
+            if full_name in context:
+                forms.update({abbreviation, full_name})
+
+    hostname = urlparse(site["url"]).hostname or ""
+    host = hostname.split(".")[0].lower()
+    for abbreviation in STATE_NAMES:
+        if host.endswith(abbreviation):
+            forms.add(abbreviation)
+    return forms
 
 
 def resolve_craigslist_site(location):
@@ -181,17 +223,29 @@ def resolve_craigslist_site(location):
         raise ValueError("Location is required.")
 
     requested_forms = _location_aliases(location)
+    requested_states = _requested_state(location)
 
     try:
         sites = _craigslist_sites()
     except requests.RequestException as exc:
         raise ValueError(f"Could not load Craigslist site directory: {exc}") from exc
 
+    # When a state is supplied, discard same-named cities from other states
+    # before doing the normal city/region matching.
+    candidate_sites = sites
+    if requested_states:
+        state_matches = [
+            site for site in sites
+            if requested_states.intersection(_site_state_forms(site))
+        ]
+        if state_matches:
+            candidate_sites = state_matches
+
     # First prefer an exact match. Then allow a city name to occur inside a
     # regional Craigslist name, e.g. Dallas -> Dallas / Fort Worth.
     exact = []
     partial = []
-    for site in sites:
+    for site in candidate_sites:
         name = _normalize_location(site["name"])
         if name in requested_forms or requested_forms.intersection({name}):
             exact.append(site)
