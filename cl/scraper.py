@@ -1,3 +1,4 @@
+import json
 import re
 import functools
 from datetime import datetime
@@ -310,15 +311,17 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
     raw_location = str(location).strip()
     parts = [part.strip() for part in raw_location.split(",") if part.strip()]
 
-    # Craigslist has a city-specific endpoint that avoids ambiguity when a
-    # city name exists in multiple states, e.g. Athens, TX vs Athens, GA.
+    # Craigslist's regional city URLs are the most reliable form for
+    # city/state searches. For example, Athens, TX is served by East Texas
+    # at /search/athens-tx/pet rather than the old /search/area/ URL form.
     if len(parts) >= 2:
         city = re.sub(r"[^a-z0-9]+", "-", parts[0].lower()).strip("-")
         state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
         if city and state:
+            site_url = resolve_craigslist_site(location)
             params["cat"] = category
             query_string = urlencode(params)
-            return f"https://www.craigslist.org/search/city/{city}-{state}" + (
+            return f"{site_url}/search/{city}-{state}/{category}" + (
                 f"?{query_string}" if query_string else ""
             )
 
@@ -506,6 +509,78 @@ def enrich_missing_images(db, limit=None):
     return enriched
 
 
+def _jsonld_search_items(soup, base_url):
+    """Extract Craigslist search results from its structured JSON-LD when present."""
+    script = soup.select_one("script#ld_searchpage_results")
+    if not script:
+        return []
+
+    try:
+        payload = json.loads(script.string or script.get_text())
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+    if isinstance(payload, list):
+        entries = payload
+    elif isinstance(payload, dict):
+        entries = payload.get("itemListElement") or []
+    else:
+        entries = []
+
+    results = []
+    for entry in entries:
+        item = entry.get("item", entry) if isinstance(entry, dict) else {}
+        if not isinstance(item, dict):
+            continue
+        title = item.get("name") or item.get("headline")
+        url = item.get("url")
+        if not title or not url:
+            continue
+
+        offers = item.get("offers") if isinstance(item.get("offers"), dict) else {}
+        price = offers.get("price")
+        price_text = None if price in (None, "") else str(price)
+        image = item.get("image")
+        if isinstance(image, list):
+            image = image[0] if image else None
+        address = item.get("address")
+        location = None
+        if isinstance(address, dict):
+            location = address.get("addressLocality") or address.get("name")
+        elif isinstance(address, str):
+            location = address
+
+        posted = item.get("datePosted") or item.get("datePublished")
+        results.append({
+            "title": str(title).strip(),
+            "url": urljoin(base_url, str(url)),
+            "price_text": price_text,
+            "location": location,
+            "posted_at": _posted_at(str(posted)) if posted else None,
+            "image_url": urljoin(base_url, image) if image else None,
+        })
+    return results
+
+
+def _html_search_rows(soup):
+    """Find current and legacy Craigslist result containers."""
+    rows = soup.select(
+        ".cl-search-result, li.cl-search-result, li.cl-static-search-result, "
+        ".result-row, li[data-pid], [data-pid].cl-search-result"
+    )
+    if rows:
+        return rows
+
+    rows = []
+    seen_nodes = set()
+    for link in soup.select('a[href*="/d/"], a[href*="/view/d/"]'):
+        node = link.find_parent(["li", "article", "div"])
+        if node is not None and id(node) not in seen_nodes:
+            seen_nodes.add(id(node))
+            rows.append(node)
+    return rows
+
+
 def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=None,
                             search_url=None, category=None,
                             area_label=None, radius=100):
@@ -524,67 +599,26 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
         raise RuntimeError(f"Craigslist request failed: {exc}") from exc
 
     soup = BeautifulSoup(response.text, "html.parser")
-    rows = soup.select(
-        "li.cl-static-search-result, li.cl-search-result, "
-        ".cl-search-result, .result-row, li[data-pid]"
-    )
-
-    if not rows:
-        rows = []
-        seen_nodes = set()
-        for link in soup.select('a[href*="/d/"]'):
-            node = link.find_parent(["li", "article", "div"])
-            if node is not None and id(node) not in seen_nodes:
-                seen_nodes.add(id(node))
-                rows.append(node)
-
+    structured = _jsonld_search_items(soup, target_url)
+    rows = _html_search_rows(soup)
+    print(f"Craigslist structured results found: {len(structured)}")
     print(f"Craigslist result rows found: {len(rows)}")
 
     listings, seen = [], set()
-    # Fetching every listing detail page can turn a single search into hundreds of HTTP requests.
-    # Keep the search result page as the source of truth and enrich only the first few listings.
     detail_enrichment_limit = 25
 
-    for row in rows:
-        title_el = row.select_one(
-            ".result-title, .titlestring, .title, a.posting-title, a"
-        )
-        if not title_el:
-            continue
-
-        title = title_el.get_text(" ", strip=True)
-        if "modem" in title.lower():
-            continue
-
-        link = row.select_one("a.posting-title, a.result-title, a[href]")
-        post_url = urljoin(target_url, link.get("href", "")) if link else ""
-        cid = _listing_id(row, post_url)
-        if not cid or cid in known or cid in seen:
-            continue
+    def add_listing(cid, title, post_url, price_text=None, location=None,
+                    posted=None, image_url=None):
+        if not cid or cid in known or cid in seen or not title:
+            return False
         seen.add(cid)
 
-        time_el = row.select_one("time, .result-date")
-        posted = _posted_at(time_el.get("datetime") if time_el else None)
-
-        price_el = row.select_one(".result-price, .price, .priceinfo")
-        location_el = row.select_one(".result-hood, .nearby, .location")
-        price_text = price_el.get_text(strip=True) if price_el else None
-        location = (
-            location_el.get_text(" ", strip=True).strip(" ()")
-            if location_el else None
-        )
-
-        # Craigslist normally exposes a thumbnail directly in the search
-        # result. Use that first so every listing can keep its image without
-        # requiring an expensive detail-page request.
-        image_url = _listing_image(row, target_url)
         description = None
         if post_url and len(listings) < detail_enrichment_limit:
             try:
                 detail = requests.get(post_url, headers=DEFAULT_HEADERS, timeout=15)
                 if detail.ok:
                     ds = BeautifulSoup(detail.text, "html.parser")
-
                     if not image_url:
                         image_url = (
                             _image_url(ds.select_one('meta[property="og:image"]'), target_url)
@@ -596,7 +630,6 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
                                 target_url,
                             )
                         )
-
                     body = ds.select_one("#postingbody, .postingbody")
                     desc = ds.select_one(
                         'meta[property="og:description"], meta[name="description"]'
@@ -606,8 +639,8 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
                         if body else (desc.get("content") if desc else None)
                     )
                     address = ds.select_one(".mapaddress")
-                    if address:
-                        location = location or address.get_text(" ", strip=True)
+                    if address and not location:
+                        location = address.get_text(" ", strip=True)
             except requests.RequestException:
                 pass
 
@@ -627,9 +660,62 @@ def get_craigslist_listings(query="surfboard", max_results=5, known_listing_ids=
             "image_url": image_url,
             "description": description,
         })
+        return True
 
+    # JSON-LD is the preferred source on current Craigslist search pages.
+    for item in structured:
+        post_url = item["url"]
+        cid_match = re.search(r"(\\d{8,})(?:\\.html)?$", urlparse(post_url).path)
+        cid = cid_match.group(1) if cid_match else None
+        if not cid:
+            cid = _listing_id(BeautifulSoup("", "html.parser"), post_url)
+        add_listing(
+            cid,
+            item["title"],
+            post_url,
+            item.get("price_text"),
+            item.get("location"),
+            item.get("posted_at"),
+            item.get("image_url"),
+        )
         if max_results is not None and len(listings) >= max_results:
             break
+
+    # Community, pets, jobs, gigs, and services may not expose JSON-LD.
+    # Fall back to the rendered search-result markup for those categories.
+    if max_results is None or len(listings) < max_results:
+        for row in rows:
+            title_el = row.select_one(
+                ".posting-title a, a.posting-title, .result-title, .titlestring, .title, a[href*='/d/'], a[href*='/view/d/']"
+            )
+            if not title_el:
+                continue
+            title = title_el.get_text(" ", strip=True)
+            if not title or "modem" in title.lower():
+                continue
+
+            link = row.select_one(
+                "a.posting-title, .posting-title a, a.result-title, a[href*='/d/'], a[href*='/view/d/'], a[href]"
+            )
+            post_url = urljoin(target_url, link.get("href", "")) if link else ""
+            cid = _listing_id(row, post_url)
+            if not cid:
+                match = re.search(r"(\\d{8,})(?:\\.html)?$", urlparse(post_url).path)
+                cid = match.group(1) if match else None
+
+            time_el = row.select_one("time, .result-posted-date, .result-date")
+            posted = _posted_at(time_el.get("datetime") if time_el else None)
+            price_el = row.select_one(".priceinfo, .result-price, .price")
+            location_el = row.select_one(
+                ".result-location, .result-hood, .meta .result-hood, .nearby, .location"
+            )
+            price_text = price_el.get_text(strip=True) if price_el else None
+            location = location_el.get_text(" ", strip=True).strip(" ()") if location_el else None
+            image_url = _listing_image(row, target_url)
+
+            add_listing(cid, title, post_url, price_text, location, posted, image_url)
+            if max_results is not None and len(listings) >= max_results:
+                break
 
     return listings
 
