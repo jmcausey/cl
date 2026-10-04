@@ -318,10 +318,12 @@ def base_location_search_url(location, category="sss", query=None, radius=None):
         city = re.sub(r"[^a-z0-9]+", "-", parts[0].lower()).strip("-")
         state = re.sub(r"[^a-z0-9]+", "-", parts[-1].lower()).strip("-")
         if city and state:
-            site_url = resolve_craigslist_site(location)
+            # Craigslist's public city endpoint accepts city-state slugs
+            # directly on www.craigslist.org, avoiding ambiguity between
+            # identically named cities such as Athens, TX and Athens, GA.
             params["cat"] = category
             query_string = urlencode(params)
-            return f"{site_url}/search/{city}-{state}/{category}" + (
+            return f"https://www.craigslist.org/search/city/{city}-{state}" + (
                 f"?{query_string}" if query_string else ""
             )
 
