@@ -23,8 +23,6 @@ class DatabaseConnection:
         return getattr(self.connection, name)
 
 
-from authlib.integrations.flask_client import OAuth
-
 
 def get_db():
     if "db" not in g:
@@ -83,8 +81,8 @@ def create_app(test_config=None):
         SECRET_KEY=os.environ.get("FLASK_SECRET_KEY", "cl-local"),
         DATABASE=database,
         DATABASE_URL=os.environ.get("DATABASE_URL", "").strip(),
-        GOOGLE_CLIENT_ID=os.environ.get("GOOGLE_CLIENT_ID", ""),
-        GOOGLE_CLIENT_SECRET=os.environ.get("GOOGLE_CLIENT_SECRET", ""),
+        LOCALS_ONLY_URL=os.environ.get("LOCALS_ONLY_URL", "http://localhost:5000").rstrip("/"),
+        SSO_SECRET=os.environ.get("SSO_SECRET", ""),
         BLOG_ALLOWED_EMAILS=os.environ.get("BLOG_ALLOWED_EMAILS", "").strip(),
     )
     if test_config:
