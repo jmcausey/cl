@@ -25,8 +25,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-cl}:${POSTGRES_PASSWORD:-change-me}@postgres:5432/${POSTGRES_DB:-cl}
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-change-this-secret}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      LOCALS_ONLY_URL: ${LOCALS_ONLY_URL:-http://localhost:5000}
+      SSO_SECRET: ${SSO_SECRET:-localsonly-sso-change-me}
       BLOG_ALLOWED_EMAILS: ${BLOG_ALLOWED_EMAILS:-}
     command: >
       sh -c "flask --app app init-db &&
