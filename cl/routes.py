@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from . import get_db
 from .jobs import execute_job
 from .scraper import craigslist_locations
@@ -162,39 +163,41 @@ def craigslist_listing_status(listing_id):
 
 @bp.route("/auth/login")
 def google_login():
-    oauth = current_app.extensions.get("oauth")
-    if not oauth or "google" not in oauth._clients:
-        flash("Google OAuth is not configured.", "error")
-        return redirect(url_for("cl.blog"))
-    redirect_uri = url_for("cl.google_callback", _external=True)
-    return oauth.google.authorize_redirect(redirect_uri)
+    localsonly_url = current_app.config.get("LOCALS_ONLY_URL", "http://localhost:5000").rstrip("/")
+    next_url = request.args.get("next", "/")
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = "/"
+    return redirect(f"{localsonly_url}/auth/login?next=/listings")
 
 
-@bp.route("/auth/callback")
-def google_callback():
-    oauth = current_app.extensions.get("oauth")
-    if not oauth or "google" not in oauth._clients:
-        flash("Google OAuth is not configured.", "error")
+@bp.route("/auth/sso")
+def sso_login():
+    token = request.args.get("token", "")
+    next_url = request.args.get("next", "/")
+    if not next_url.startswith("/") or next_url.startswith("//"):
+        next_url = "/"
+    secret = current_app.config.get("SSO_SECRET", "")
+    if not secret or not token:
+        flash("Single sign-on is not configured.", "error")
         return redirect(url_for("cl.blog"))
     try:
-        token = oauth.google.authorize_access_token()
-        user_info = oauth.google.userinfo()
-        if not token or not user_info:
-            raise ValueError("Google login failed.")
-    except Exception as exc:
-        flash(f"Google sign-in failed: {exc}", "error")
+        user_info = URLSafeTimedSerializer(secret, salt="localsonly-sso-v1").loads(token, max_age=120)
+    except SignatureExpired:
+        flash("Single sign-on expired. Please sign in again.", "error")
+        return redirect(url_for("cl.blog"))
+    except BadSignature:
+        flash("Invalid single sign-on token.", "error")
+        return redirect(url_for("cl.blog"))
+
+    google_sub = (user_info.get("sub") or "").strip()
+    email = (user_info.get("email") or "").strip()
+    name = (user_info.get("name") or email or "Google User").strip()
+    picture = (user_info.get("picture") or "").strip()
+    if not google_sub or not email:
+        flash("Single sign-on did not provide a valid identity.", "error")
         return redirect(url_for("cl.blog"))
 
     db = get_db()
-    google_sub = user_info.get("sub") or user_info.get("email")
-    email = (user_info.get("email") or "").strip()
-    name = (user_info.get("name") or user_info.get("email") or "Google User").strip()
-    picture = (user_info.get("picture") or "").strip()
-
-    if not google_sub or not email:
-        flash("Google account did not return the required profile data.", "error")
-        return redirect(url_for("cl.blog"))
-
     db.execute(
         """
         INSERT INTO users (google_sub, email, name, picture, updated_at)
@@ -212,17 +215,19 @@ def google_callback():
     session["user_id"] = user["id"]
     session["user_name"] = name
     session["user_email"] = email
-    flash("Signed in with Google.", "success")
-    return redirect(url_for("cl.blog"))
+    return redirect(next_url)
+
+
+@bp.route("/auth/callback")
+def google_callback():
+    return redirect(url_for("cl.google_login"))
 
 
 @bp.route("/auth/logout")
 def google_logout():
-    session.pop("user_id", None)
-    session.pop("user_name", None)
-    session.pop("user_email", None)
-    flash("You have been signed out.", "success")
-    return redirect(url_for("cl.blog"))
+    session.clear()
+    localsonly_url = current_app.config.get("LOCALS_ONLY_URL", "http://localhost:5000").rstrip("/")
+    return redirect(f"{localsonly_url}/auth/logout")
 
 
 @bp.route("/blog")
