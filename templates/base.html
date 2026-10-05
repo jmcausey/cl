@@ -21,4 +21,23 @@ a{color:#3182ce}.card{background:#fff;border:1px solid #e2e8f0;border-radius:8px
 <body class="{% block body_class %}{% endblock %}">
 {% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="notice">{{ message }}</div>{% endfor %}{% endwith %}
 <main class="content">{% block content %}{% endblock %}</main>
+<script>
+(() => {
+  const sendHeight = () => {
+    const height = Math.max(
+      document.documentElement.scrollHeight,
+      document.body.scrollHeight,
+      document.documentElement.offsetHeight,
+      document.body.offsetHeight
+    );
+    window.parent.postMessage({ type: "localsonly-height", height }, "*");
+  };
+  window.addEventListener("load", sendHeight);
+  window.addEventListener("resize", sendHeight);
+  if (window.ResizeObserver) {
+    new ResizeObserver(sendHeight).observe(document.body);
+  }
+  sendHeight();
+})();
+</script>
 </body></html>
