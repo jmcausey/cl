@@ -7,7 +7,7 @@ body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-seri
 .nav-top-row,.nav-bottom-row{display:flex;justify-content:space-between;align-items:center;padding:.5rem 1rem}
 .nav-top-row{border-bottom:1px solid #2d3748}
 .nav-sub-row{display:flex;justify-content:flex-end;padding:.35rem 1rem;border-bottom:1px solid #2d3748;background:#202938}
-.nav-left,.nav-sub-right,.weather-metrics,.clock-container{display:flex;align-items:center;list-style:none;margin:0;padding:0;gap:1rem}
+.nav-left,.nav-sub-right,.weather-metrics{display:flex;align-items:center;list-style:none;margin:0;padding:0;gap:1rem}
 .nav-left h1{margin:0;font-size:1.1rem}
 .nav-left a,.nav-sub-right a{color:#cbd5e0;text-decoration:none}
 .nav-left a:hover,.nav-sub-right a:hover{color:#fff}
@@ -23,7 +23,6 @@ a{color:#3182ce}.card{background:#fff;border:1px solid #e2e8f0;border-radius:8px
   <div class="nav-top-row">
     <ul class="nav-left">
       <li><h1><a href="{{ url_for('cl.index') }}">{{ hostname }}</a></h1></li>
-      
       <li><a href="{{ url_for('cl.control') }}">Control Panel</a></li>
     </ul>
     <ul class="nav-left">
@@ -48,12 +47,8 @@ a{color:#3182ce}.card{background:#fff;border:1px solid #e2e8f0;border-radius:8px
       <li><span class="weather-badge">Listings</span></li>
       <li><span class="weather-badge">Control Panel</span></li>
     </ul>
-    <ul class="clock-container"><li id="live-clock">--:--:-- --</li></ul>
   </div>
 </nav>
 {% with messages=get_flashed_messages(with_categories=true) %}{% for category,message in messages %}<div class="notice">{{ message }}</div>{% endfor %}{% endwith %}
 <main class="content">{% block content %}{% endblock %}</main>
-<script>
-function updateClock(){const e=document.getElementById("live-clock");if(e)e.textContent=new Date().toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:true})}
-updateClock();setInterval(updateClock,1000);
-</script></body></html>
+</body></html>
